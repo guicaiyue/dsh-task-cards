@@ -10,7 +10,7 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./client": "./assets/panel.js",
+    "./client": "./lib/client.js",
     "./observer-prompt": "./lib/observer-prompt.js",
     "./icon": "./icon.svg"
   },
