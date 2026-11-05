@@ -1,8 +1,17 @@
 {
   "name": "dsh-task-cards",
   "version": "0.0.1",
-  "description": "DSH 任务卡：把散在多个会话里的事收敛成一张卡（阶段一 · 第一步：建卡/看卡/完成）",
+  "description": "DSH 任务卡：回合结束后由无工具的观察者会话把值得留下的事记成卡（要我决策 / 要我知晓 / 自动处理），面板内直接审批与执行",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guicaiyue/dsh-task-cards.git"
+  },
+  "homepage": "https://github.com/guicaiyue/dsh-task-cards#readme",
+  "bugs": {
+    "url": "https://github.com/guicaiyue/dsh-task-cards/issues"
+  },
+  "author": "xirizhi",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
