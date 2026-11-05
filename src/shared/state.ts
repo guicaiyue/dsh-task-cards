@@ -1,6 +1,6 @@
 // 状态机与视图分组：面板和路由共用，避免「这里 done、那里 dismissed」的散落判断。
 
-import type { CardKind, CardStatus } from './contract'
+import type { CardKind, CardSeverity, CardStatus } from './contract'
 
 /** 已结束（不再需要动作）的状态。 */
 export const CLOSED_STATUSES: readonly CardStatus[] = ['done', 'dismissed', 'acknowledged']
@@ -52,4 +52,36 @@ export function groupCards<C extends { kind: CardKind; status: CardStatus }>(
     else groups.info.push(card)
   }
   return groups
+}
+
+/** 排序用的最小形状：比 Card 少，测试与两端都能直接用。 */
+export interface CardOrder {
+  kind: CardKind
+  status: CardStatus
+  severity: CardSeverity
+  createdAt: number
+}
+
+const SEVERITY_WEIGHT: Record<CardSeverity, number> = { high: 3, normal: 2, low: 1 }
+
+/** 处理车道：0 要我决策 → 1 要我知晓 → 2 自动处理中 → 3 已结束。 */
+export function cardLane(card: Pick<CardOrder, 'kind' | 'status'>): number {
+  if (isClosed(card.status)) return 3
+  if (card.kind === 'decision') return 0
+  if (card.kind === 'auto') return 2
+  return 1
+}
+
+/** 列表顺序：待处理的在前（决策 → 知晓 → 自动），已结束沉底；同档先重后轻，再新的在前。 */
+export function compareCards(a: CardOrder, b: CardOrder): number {
+  const lane = cardLane(a) - cardLane(b)
+  if (lane !== 0) return lane
+  const severity = SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity]
+  if (severity !== 0) return severity
+  return (b.createdAt || 0) - (a.createdAt || 0)
+}
+
+/** 不就地排序：调用方拿到的仍是同一批卡的新数组。 */
+export function sortCards<C extends CardOrder>(cards: readonly C[]): C[] {
+  return cards.slice().sort(compareCards)
 }

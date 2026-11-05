@@ -20,6 +20,7 @@ export const zh: Record<string, string> = {
   emptyAll: '还没有卡。会话结束后观察者会自己记，也可以在上面手写一条。',
   manualTree: '手写卡片',
   treeCount: '{n} 张',
+  treePending: '{n} 待处理',
   detail: '查看详情',
   openSession: '打开会话',
   modalTitle: '会话详情',

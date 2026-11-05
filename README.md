@@ -48,7 +48,7 @@
 | `src/host/cards/` `scanner/` `policy/` `question/` | 宿主 | 存储、定时执行、白名单、提问回填 |
 | `src/client/` | 浏览器 | 面板：components / hooks / locale / api / styles |
 | `lib/` | 构建产物 | `pnpm build` 生成；`lib/index.js`、`lib/observer-prompt.js`、`lib/client.js` |
-| `tests/` | Node | 63 个用例：契约、边界、存储、路由、观察者输入、面板渲染、bundle ABI |
+| `tests/` | Node | 70 个用例：契约、边界、存储、路由、观察者输入、卡片排序、面板渲染、bundle ABI |
 
 数据在 `$DSH_HOME/dsh-task-cards/`：`cards.json`、`settings.json`、`policy.json`、`records.json`、`workspace/`。
 

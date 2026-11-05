@@ -132,6 +132,43 @@ describe('面板', () => {
     await screen.findByText(zh.emptyAll as string)
   })
 
+  it('最前面是等我处理的那条，不是刚生成的那条', async () => {
+    const now = Date.now()
+    stubApi({
+      cards: [
+        card({
+          id: 'c-done',
+          kind: 'decision',
+          status: 'done',
+          title: '已经处理完的决策',
+          createdAt: now,
+          origin: { sessionId: 's-new' },
+        }),
+        card({
+          id: 'c-open',
+          kind: 'decision',
+          status: 'open',
+          title: '等我拍板的决策',
+          createdAt: now - 60_000,
+          origin: { sessionId: 's-old' },
+        }),
+        card({
+          id: 'c-info',
+          kind: 'info',
+          status: 'open',
+          title: '等我知晓的事',
+          createdAt: now - 120_000,
+          origin: { sessionId: 's-old' },
+        }),
+      ],
+    })
+    const { container } = render(<Panel t={translate} />)
+    await screen.findByText('等我拍板的决策')
+    const texts = [...container.querySelectorAll('.dtc-text')].map((node) => node.textContent)
+    expect(texts[0]).toBe('等我拍板的决策')
+    expect(texts[texts.length - 1]).toBe('已经处理完的决策')
+  })
+
   it('点「批准」发出 complete 动作', async () => {
     const { calls } = stubApi({ cards: [card({ id: 'c-9', kind: 'decision', title: '删掉旧表' })] })
     render(<Panel t={translate} />)

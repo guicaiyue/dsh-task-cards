@@ -102,6 +102,7 @@ body[data-ds-dark-theme] .dtc-page {
 .dtc-tree-title { font-size: 13px; font-weight: 600; color: var(--dtc-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
   background: none; border: none; padding: 0; text-align: left; cursor: pointer; font-family: inherit; }
 .dtc-tree-meta { font-size: 11px; color: var(--dtc-faint); white-space: nowrap; }
+.dtc-tree-pending { font-size: 11px; color: var(--dtc-accent); border: 1px solid var(--dtc-accent); border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
 .dtc-tree-body { display: flex; flex-direction: column; }
 .dtc-branch { display: flex; gap: 10px; padding: 9px 14px 9px 24px; border-top: 1px solid var(--dtc-line); position: relative; }
 .dtc-branch::before { content: ''; position: absolute; left: 12px; top: 0; bottom: 50%; width: 1px; background: var(--dtc-border); }

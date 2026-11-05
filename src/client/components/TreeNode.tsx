@@ -1,5 +1,6 @@
 // 会话树的一层：一个会话（或「手写卡片」组）折叠后露出里面的卡。
 
+import { isClosed } from '../../shared/state'
 import { timeLabel } from '../time'
 import type { Card, CardActionName, Translate } from '../types'
 import { CardRow } from './CardRow'
@@ -23,6 +24,7 @@ interface HeadProps {
   sessionId: string
   heading: string
   count: number
+  pending: number
   createdAt: number | null | undefined
   manual: boolean
   open: boolean
@@ -36,6 +38,7 @@ function TreeHead({
   sessionId,
   heading,
   count,
+  pending,
   createdAt,
   manual,
   open,
@@ -57,6 +60,9 @@ function TreeHead({
         {heading}
       </button>
       <span className="dtc-tree-meta">{t('treeCount', { n: count })}</span>
+      {pending > 0 ? (
+        <span className="dtc-tree-pending">{t('treePending', { n: pending })}</span>
+      ) : null}
       <span className="dtc-tree-meta">{timeLabel(createdAt)}</span>
       {manual ? null : (
         <button
@@ -94,7 +100,9 @@ export function TreeNode({
   onAnswer,
 }: Props) {
   const manual = !sessionId
-  const latest = cards[0]
+  // 组头的时间取「最近一张」，待处理数取组内还没结束的卡。
+  const latestAt = cards.reduce((max, card) => Math.max(max, card.createdAt || 0), 0)
+  const pending = cards.filter((card) => !isClosed(card.status)).length
   const heading = manual ? t('manualTree') : title || sessionId.slice(0, 18)
   return (
     <div className="dtc-tree-node">
@@ -103,7 +111,8 @@ export function TreeNode({
         sessionId={sessionId}
         heading={heading}
         count={cards.length}
-        createdAt={latest?.createdAt}
+        pending={pending}
+        createdAt={latestAt}
         manual={manual}
         open={open}
         onToggle={onToggle}

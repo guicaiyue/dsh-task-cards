@@ -6,7 +6,7 @@ dsh-task-cards/
 │   ├── shared/           两端共用：契约、路由、状态机、ABI 常量（不依赖 Node/DOM）
 │   │   ├── contract.ts   zod schema —— 字段的唯一真源
 │   │   ├── routes.ts     API 路径常量
-│   │   ├── state.ts      状态机与面板分组
+│   │   ├── state.ts      状态机、列表排序与面板分组
 │   │   └── abi.ts        PANEL_ID / LOCALE_NS / slot 名
 │   ├── host/             宿主侧（Node）：观察者 + 面板后端
 │   │   ├── index.ts      入口：apply(root) 按顺序装配

@@ -1,7 +1,7 @@
 // 卡片页：手写入口 + 按会话分组的树。
 
 import { useMemo, useState } from 'react'
-import { groupCards } from '../../shared/state'
+import { groupCards, sortCards } from '../../shared/state'
 import type { Card, CardActionName, Translate } from '../types'
 import { CardComposer } from './CardComposer'
 import { TreeNode } from './TreeNode'
@@ -11,21 +11,19 @@ interface Tree {
   cards: Card[]
 }
 
-/** 按会话分组，组内新的在前，组间按最新一张排。 */
+/**
+ * 按会话分组：组按组内最该处理的卡排前，组内也先排该处理的，已结束的沉底。
+ * 这样面板第一条永远是等我动的那条，而不是刚生成的那条。
+ */
 export function buildTrees(cards: Card[]): Tree[] {
   const groups = new Map<string, Card[]>()
-  for (const card of cards) {
+  for (const card of sortCards(cards)) {
     const id = card.origin?.sessionId || ''
     const list = groups.get(id)
     if (list) list.push(card)
     else groups.set(id, [card])
   }
-  return [...groups.entries()]
-    .map(([sessionId, list]) => ({
-      sessionId,
-      cards: list.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
-    }))
-    .sort((a, b) => (b.cards[0]?.createdAt || 0) - (a.cards[0]?.createdAt || 0))
+  return [...groups.entries()].map(([sessionId, list]) => ({ sessionId, cards: list }))
 }
 
 interface Props {

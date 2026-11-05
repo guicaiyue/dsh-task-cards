@@ -20,6 +20,7 @@ export const en: Record<string, string> = {
   emptyAll: 'No cards yet. The observer records them after turns; you can also type one above.',
   manualTree: 'Manual cards',
   treeCount: '{n}',
+  treePending: '{n} pending',
   detail: 'Details',
   openSession: 'Open chat',
   modalTitle: 'Session detail',
