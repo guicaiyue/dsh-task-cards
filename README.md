@@ -12,7 +12,7 @@
 - **观察者不碰原会话**：只读事件流，不往原会话里投任何东西。
 - **三种卡**：`decision` 要我拍板、`info` 要我知晓、`auto` 可自动处理（带 `action`）。分类由系统提示词决定。
 - **观察者的输入**：最近三轮「用户输入 + 模型最终输出」，不是只看最后一句回复。
-- **自动执行**：`lib/scanner.mjs` 每 30 秒扫到点的 `auto` 卡，在原会话里替用户补一句话（429 → 10 分钟后重试，400 → 立即重试）。成功收卡，失败退回「要我知晓」并记原因。
+- **自动执行**：`src/host/scanner/` 每 30 秒扫到点的 `auto` 卡，在原会话里替用户补一句话（429 → 10 分钟后重试，400 → 立即重试）。成功收卡，失败退回「要我知晓」并记原因。
 - **提示词可视化编辑**：保存后下一轮生效（不用重启）。
 - **只认 JSON**：先原样解析，再抠代码块，再扫平衡括号块；都不行重试一次，仍失败记异常、放弃这张卡。
 - **提问两边都能答**：聊天里的提问卡片和我们的任务卡同时出现，谁先答谁生效。卡片先答 → 作为 `ask_user_question` 的原生结果回给模型；聊天先答 → 自动回写到卡片上。只有会话已中断才退回模拟用户输入。
@@ -41,17 +41,16 @@
 
 | 路径 | 跑在哪 | 干什么 |
 | --- | --- | --- |
-| `lib/index.js` | 宿主 | 路由 + 事件订阅 + preset 注册 |
-| `lib/observer.mjs` | 宿主 | 观察者流水线：建会话、投提示、等结果、解析、重试、记账 |
-| `lib/observer-prompt.js` | 宿主（preset 内） | 只做一件事：把系统提示词注册成完整 prompt section |
-| `lib/scanner.mjs` | 宿主 | 卡片配套的定时任务：到点执行 auto 动作 |
-| `lib/extract.mjs` | 宿主 | 从模型输出里抠 JSON，收敛成卡片草稿 |
-| `lib/store.mjs` | 宿主 | 卡片 / 设置两份 JSON，原子写 |
-| `lib/policy.mjs` | 宿主 | 工具 / 技能白名单（`policy.json`） |
-| `assets/panel.js` | 客户端 | 侧栏入口 + 两个页签（卡片 / 提示词） |
-| `tests/` | Node | 28 个用例：存储、路由、JSON 抽取、扫描器、面板注册 |
+| `src/shared/` | 两端共用 | zod 契约、路由常量、状态机、ABI 常量 |
+| `src/host/index.ts` · `wire.ts` | 宿主 | 入口与装配 |
+| `src/host/observer/` | 宿主 | 观察者流水线 + 只注册提示词的 preset 插件 |
+| `src/host/routes/` | 宿主 | 9 个后端端点，一个端点一个文件 |
+| `src/host/cards/` `scanner/` `policy/` `question/` | 宿主 | 存储、定时执行、白名单、提问回填 |
+| `src/client/` | 浏览器 | 面板：components / hooks / locale / api / styles |
+| `lib/` | 构建产物 | `pnpm build` 生成；`lib/index.js`、`lib/observer-prompt.js`、`lib/client.js` |
+| `tests/` | Node | 63 个用例：契约、边界、存储、路由、观察者输入、面板渲染、bundle ABI |
 
-数据在 `$DSH_HOME/dsh-task-cards/`：`cards.json`、`settings.json`、`policy.json`、`workspace/`。
+数据在 `$DSH_HOME/dsh-task-cards/`：`cards.json`、`settings.json`、`policy.json`、`records.json`、`workspace/`。
 
 ## 挂进 profile
 
@@ -65,7 +64,7 @@ dsh plugin --profile web add link:/path/to/dsh-task-cards
 #       name: dsh-task-cards
 ```
 
-改完刷新页面（客户端模块有新版本），侧栏就会出现「任务卡」。
+`link:` 安装会跑 `prepare`（= `pnpm build`）；手工改完代码记得 `pnpm build`，宿主会在 500 ms 内热重载客户端模块。
 回滚：删掉那条 insert，`dsh plugin --profile web remove dsh-task-cards`。
 
 ## 验收（五分钟）
@@ -75,11 +74,21 @@ dsh plugin --profile web add link:/path/to/dsh-task-cards
 3. 侧栏「任务卡观察者」工作区里能看到刚才那次观察者会话，点开就是原生对话（含模型、token、工具次数）。观察者会话按子代理身份跑，宿主不会给它装工具。
 4. 「提示词」里改一句、保存 → 下一轮按新提示词输出（分类规则也在这里改）。
 
+完整的浏览器验收清单在 [docs/verification.md](docs/verification.md)。
+
 ## 开发
 
 ```bash
-npm run check   # 语法检查
-npm test        # 28 个用例
+pnpm install      # 首次（会先 build 一次）
+pnpm dev          # 改 src 自动重建，浏览器热重载
+pnpm verify       # lint → typecheck → test → build → ABI → 代码预算
 ```
 
-改 `assets/panel.js` 刷新页面即可；改 `lib/` 会热重载；改提示词不用改代码。
+规范（AI 与人同一套，提交时由 lefthook 强制）：
+
+- 字段先改 `src/shared/contract.ts` 的 zod schema，类型与文档都从它派生。
+- 客户端不碰 Node，宿主不碰 React（Biome 与测试双重拦截）。
+- 单文件 ≤300 行、接线文件 ≤150 行、函数 ≤60 行；客户端产物 ≤150 KB。
+- 提交信息 `type(scope): 中文摘要`，type/scope 枚举见 `commitlint.config.mjs`。
+
+更多：[架构](docs/architecture.md) · [契约](docs/contracts.md) · [宿主 ABI](docs/host-abi.md) · [命令](docs/commands.md) · [验收](docs/verification.md) · [ADR](docs/adr/)
