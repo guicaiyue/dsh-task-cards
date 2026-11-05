@@ -100,11 +100,11 @@ function attachPresetDisposer(ctx: PresetRegistrar): void {
   ctx.effect?.(
     () => () => {
       const current = slots[PRESET_SLOT]
-      if (typeof current !== 'function') return undefined
+      if (typeof current !== 'function') return
       try {
-        return current() as void
+        current()
       } catch {
-        return undefined
+        /* 已经撤掉 */
       }
     },
     'dsh-task-cards: observer preset',
