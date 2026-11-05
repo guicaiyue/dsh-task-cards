@@ -10,6 +10,8 @@ import { param, type RouteDeps } from './deps'
 export function createInspectHandler({ runtime }: RouteDeps) {
   return async (req: HttpRequestLike, res: HttpResponseLike): Promise<unknown> => {
     const id = param(req.url, 'id')
+    // 缺 id 是调用方错误，必须是 400；别让它掉进 readSession('') 变成 500。
+    if (!id) throw new StoreError('MISSING_ID', '缺少会话 id')
     const query = runtime()?.sessionQuery
     if (!query) throw new StoreError('NO_QUERY', '宿主没有 sessionQuery')
     const snapshot = await query.readSession(id)

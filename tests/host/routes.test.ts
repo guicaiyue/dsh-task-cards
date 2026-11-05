@@ -31,6 +31,12 @@ function harness(): { routes: Map<string, Handler>; dispose: () => void } {
     get() {
       return undefined
     },
+    // 只给诊断端点用的最小会话查询：不做真实事件读，够验参数校验与形状
+    sessionQuery: {
+      async readSession(id: string) {
+        return { id, events: [{ type: 'user/message', data: { text: 'hello' } }] }
+      },
+    },
   }
   apply({
     inject: (_names: string[], cb: (value: typeof ctx) => void) => cb(ctx),
@@ -207,6 +213,31 @@ describe('面板后端路由', () => {
 
       const wrongMethod = await call(routes, 'DELETE', '/dsh-task-cards/api/cards')
       expect(wrongMethod.status).toBe(405)
+    } finally {
+      dispose()
+    }
+  })
+
+  it('诊断端点：缺 id 是 400 而不是 500，给了 id 就返回形状', async () => {
+    const { routes, dispose } = harness()
+    try {
+      const missing = await call(routes, 'GET', '/dsh-task-cards/api/inspect')
+      expect(missing.status).toBe(400)
+      expect((missing.json as unknown as { code: string }).code).toBe('MISSING_ID')
+
+      const ok = await call(routes, 'GET', '/dsh-task-cards/api/inspect?id=session-x')
+      expect(ok.status).toBe(200)
+      const body = ok.json as unknown as {
+        sessionId: string
+        toolCount: number
+        eventTypes: string[]
+      }
+      expect(body.sessionId).toBe('session-x')
+      expect(Array.isArray(body.eventTypes)).toBe(true)
+
+      const events = await call(routes, 'GET', '/dsh-task-cards/api/inspect?events=1&id=session-x')
+      expect(events.status).toBe(200)
+      expect(Array.isArray((events.json as unknown as { events: unknown[] }).events)).toBe(true)
     } finally {
       dispose()
     }
