@@ -1,0 +1,8 @@
+# dsh-task-cards —— DSH bundle patch
+#
+# 把插件挂进 profile 的配置树。`dsh plugin` 安装时会自动识别这个文件
+# （package.json 的 dsh.bundle.patch 指向它）。
+
+- insert:
+    - id: dsh-task-cards
+      name: dsh-task-cards

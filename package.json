@@ -1,0 +1,49 @@
+{
+  "name": "dsh-task-cards",
+  "version": "0.0.1",
+  "description": "DSH 任务卡：把散在多个会话里的事收敛成一张卡（阶段一 · 第一步：建卡/看卡/完成）",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./assets/panel.js",
+    "./observer-prompt": "./lib/observer-prompt.js",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib",
+    "assets",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "task-cards",
+    "任务卡"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "check": "node --check lib/index.js && node --check lib/store.mjs && node --check assets/panel.js",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}
