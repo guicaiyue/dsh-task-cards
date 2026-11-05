@@ -58,6 +58,7 @@ if (hostExport) {
   try {
     const code = read(hostExport)
     if (!code.includes('export')) fail(`宿主入口 ${hostExport} 不像 ESM 模块`)
+    if (/from\s*["']react["']|require\(\s*["']react["']/.test(code)) fail('宿主产物里出现 react')
     notes.push(
       `host entry ${hostExport}: ${(statSync(path.join(root, hostExport)).size / 1024).toFixed(1)} KB`,
     )

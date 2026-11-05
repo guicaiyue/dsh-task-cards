@@ -22,7 +22,9 @@ export default defineConfig([
     entry: { index: 'src/host/index.ts', 'observer-prompt': 'src/host/observer/prompt.ts' },
     format: ['esm'],
     platform: 'node',
-    dts: true,
+    // 不产出 .d.ts：这份插件的消费方是宿主运行时（调用 apply），不是 TS 用户；
+    // zod 类型卷进 d.ts 会撑到 100 KB 并触发一堆 rolldown 警告。
+    dts: false,
     clean: true,
     ...shared,
   },
