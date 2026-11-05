@@ -3,11 +3,15 @@
 // 模型最常见的两种跑偏：包一层 markdown 代码块、前后加一句解释。
 // 两种都得能救，救不回来才交给上层重试。
 
+import type { CardAction, CardDraft, CardKind, CardSeverity } from '../../shared/contract'
+
+type ParseResult = { ok: true; value: unknown } | { ok: false }
+
 /**
  * 从一个字符串里截出第一个平衡的 JSON 对象/数组。
  * 扫描时跳过字符串内容与转义，避免把字符串里的花括号当结构。
  */
-function scanBalanced(text) {
+function scanBalanced(text: string): ParseResult | null {
   for (let start = 0; start < text.length; start += 1) {
     const open = text[start]
     if (open !== '{' && open !== '[') continue
@@ -38,19 +42,22 @@ function scanBalanced(text) {
   return null
 }
 
-function tryParse(text) {
+function tryParse(text: string): ParseResult {
   try {
     return { ok: true, value: JSON.parse(text) }
-  } catch (err) {
+  } catch {
     return { ok: false }
   }
 }
 
+export type ExtractedJson =
+  | { ok: true; value: unknown; via: 'direct' | 'fence' | 'fence+bracket' | 'bracket' }
+  | { ok: false; reason: string }
+
 /**
  * 依次尝试：整段 JSON → 代码块里的 JSON → 正文里第一个平衡括号块。
- * @returns {{ ok: true, value: unknown, via: string } | { ok: false, reason: string }}
  */
-export function extractJson(raw) {
+export function extractJson(raw: unknown): ExtractedJson {
   const text = String(raw ?? '').trim()
   if (!text) return { ok: false, reason: '模型没有输出任何内容' }
 
@@ -58,65 +65,86 @@ export function extractJson(raw) {
   if (direct.ok) return { ok: true, value: direct.value, via: 'direct' }
 
   const fence = /```(?:json|JSON)?\s*([\s\S]*?)```/g
-  let match
-  while ((match = fence.exec(text))) {
-    const body = match[1].trim()
+  for (let match = fence.exec(text); match; match = fence.exec(text)) {
+    const body = (match[1] ?? '').trim()
     const parsed = tryParse(body)
     if (parsed.ok) return { ok: true, value: parsed.value, via: 'fence' }
     const scanned = scanBalanced(body)
-    if (scanned) return { ok: true, value: scanned.value, via: 'fence+bracket' }
+    if (scanned?.ok) return { ok: true, value: scanned.value, via: 'fence+bracket' }
   }
 
   const scanned = scanBalanced(text)
-  if (scanned) return { ok: true, value: scanned.value, via: 'bracket' }
+  if (scanned?.ok) return { ok: true, value: scanned.value, via: 'bracket' }
 
   return { ok: false, reason: '输出里没有可解析的 JSON' }
 }
 
-const KINDS = new Set(['decision', 'info', 'auto'])
-const SEVERITIES = new Set(['high', 'normal', 'low'])
+const KINDS = new Set<string>(['decision', 'info', 'auto'])
+const SEVERITIES = new Set<string>(['high', 'normal', 'low'])
 const MAX_DELAY_MS = 24 * 60 * 60 * 1000
 
 /** 自动动作只支持「到点在原会话里补一句话」这一种，先把契约收窄。 */
-function normalizeAction(action, kind) {
+function normalizeAction(action: unknown): CardAction | null {
   if (!action || typeof action !== 'object') return null
-  const type = action.type === 'retry' || action.type === 'prompt' ? action.type : null
+  const raw = action as Record<string, unknown>
+  const type = raw.type === 'retry' || raw.type === 'prompt' ? raw.type : null
   if (!type) return null
-  const delay = Number(action.delayMs)
-  const delayMs = Number.isFinite(delay) ? Math.min(MAX_DELAY_MS, Math.max(0, Math.trunc(delay))) : 600000
-  const input = String(action.input ?? action.text ?? '').trim().slice(0, 2000)
+  const delay = Number(raw.delayMs)
+  const delayMs = Number.isFinite(delay)
+    ? Math.min(MAX_DELAY_MS, Math.max(0, Math.trunc(delay)))
+    : 600000
+  const input = String(raw.input ?? raw.text ?? '')
+    .trim()
+    .slice(0, 2000)
   if (!input) return null
-  const sessionId = typeof action.sessionId === 'string' && action.sessionId ? action.sessionId : undefined
+  const sessionId = typeof raw.sessionId === 'string' && raw.sessionId ? raw.sessionId : undefined
   return { type, delayMs, input, ...(sessionId ? { sessionId } : {}) }
 }
+
+export type CoercedCards = { ok: true; cards: CardDraft[] } | { ok: false; reason: string }
 
 /**
  * 把 JSON 值收敛成卡的草稿列表。
  * 接受 {cards:[...]}、单个 {...card}、[...]；其它形状视为格式错误。
  * 卡是 JSON 的展示面：kind 决定归入「要我决策 / 要我知晓 / 自动处理」。
- * @returns {{ ok: true, cards: any[] } | { ok: false, reason: string }}
  */
-export function coerceCards(value) {
-  let rows
+export function coerceCards(value: unknown): CoercedCards {
+  let rows: unknown[]
   if (Array.isArray(value)) rows = value
-  else if (value && typeof value === 'object' && Array.isArray(value.cards)) rows = value.cards
-  else if (value && typeof value === 'object' && typeof value.title === 'string') rows = [value]
+  else if (
+    value &&
+    typeof value === 'object' &&
+    Array.isArray((value as { cards?: unknown }).cards)
+  )
+    rows = (value as { cards: unknown[] }).cards
+  else if (
+    value &&
+    typeof value === 'object' &&
+    typeof (value as { title?: unknown }).title === 'string'
+  )
+    rows = [value]
   else return { ok: false, reason: 'JSON 里没有 cards 数组' }
 
-  const cards = []
+  const cards: CardDraft[] = []
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue
-    const title = String(row.title ?? row.name ?? '').trim()
+    const raw = row as Record<string, unknown>
+    const title = String(raw.title ?? raw.name ?? '').trim()
     if (!title) continue
-    const action = normalizeAction(row.action, row.kind)
-    let kind = KINDS.has(row.kind) ? row.kind : 'info'
+    const action = normalizeAction(raw.action)
+    let kind: CardKind = KINDS.has(String(raw.kind)) ? (raw.kind as CardKind) : 'info'
     // 说了「自动处理」却没给出可执行动作：降级成「要我知晓」，宁可提醒人，也不静默。
     if (kind === 'auto' && !action) kind = 'info'
+    const severity: CardSeverity = SEVERITIES.has(String(raw.severity))
+      ? (raw.severity as CardSeverity)
+      : 'normal'
     cards.push({
       title: title.slice(0, 200),
-      detail: String(row.detail ?? row.summary ?? row.note ?? '').trim().slice(0, 1000),
+      detail: String(raw.detail ?? raw.summary ?? raw.note ?? '')
+        .trim()
+        .slice(0, 1000),
       kind,
-      severity: SEVERITIES.has(row.severity) ? row.severity : 'normal',
+      severity,
       action,
     })
   }

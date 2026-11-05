@@ -2,6 +2,10 @@
 node_modules/
 .pnpm-store/
 
+# 构建产物（`pnpm build` 生成，不入库）
+lib/
+*.tsbuildinfo
+
 # 本地测试产物与临时目录（测试脚本自己造临时 DSH_HOME）
 .tmp/
 coverage/

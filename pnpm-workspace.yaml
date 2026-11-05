@@ -1,0 +1,6 @@
+# pnpm 11 的构建脚本审批：lefthook 要下载平台二进制，必须显式放行。
+allowBuilds:
+  lefthook: true
+
+onlyBuiltDependencies:
+  - lefthook

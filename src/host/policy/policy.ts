@@ -10,13 +10,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import type { Policy, PolicyRole } from '../../shared/contract'
+
 export const POLICY_FILE = path.join(
   process.env.DSH_HOME || path.join(process.env.HOME || '.', '.dsh'),
   'dsh-task-cards',
   'policy.json',
 )
 
-export const DEFAULT_POLICY = {
+export const DEFAULT_POLICY: Policy = {
   version: 1,
   roles: {
     observer: { tools: [], skills: [] },
@@ -25,23 +27,28 @@ export const DEFAULT_POLICY = {
   },
 }
 
-export function readPolicy(file = POLICY_FILE) {
+export function readPolicy(file: string = POLICY_FILE): Policy {
   try {
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
-    const roles = { ...DEFAULT_POLICY.roles, ...(raw && raw.roles ? raw.roles : {}) }
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>
+    const roles = {
+      ...DEFAULT_POLICY.roles,
+      ...((raw?.roles ? raw.roles : {}) as Record<string, unknown>),
+    }
+    const normalized = {} as Policy['roles']
     for (const [name, rule] of Object.entries(roles)) {
-      roles[name] = {
-        tools: Array.isArray(rule && rule.tools) ? rule.tools.map(String) : [],
-        skills: Array.isArray(rule && rule.skills) ? rule.skills.map(String) : [],
+      const value = (rule ?? {}) as Record<string, unknown>
+      normalized[name as PolicyRole] = {
+        tools: Array.isArray(value.tools) ? value.tools.map(String) : [],
+        skills: Array.isArray(value.skills) ? value.skills.map(String) : [],
       }
     }
-    return { version: raw.version || 1, roles }
-  } catch (err) {
+    return { version: typeof raw.version === 'number' ? raw.version : 1, roles: normalized }
+  } catch {
     return { ...DEFAULT_POLICY, roles: { ...DEFAULT_POLICY.roles } }
   }
 }
 
-export function writePolicy(policy, file = POLICY_FILE) {
+export function writePolicy(policy: Policy, file: string = POLICY_FILE): Policy {
   const dir = path.dirname(file)
   fs.mkdirSync(dir, { recursive: true })
   const tmp = `${file}.tmp-${process.pid}`
@@ -51,15 +58,15 @@ export function writePolicy(policy, file = POLICY_FILE) {
 }
 
 /** 某个角色该放行的工具名；`*` 表示全放行（返回 null）。 */
-export function allowedTools(policy, role) {
-  const rule = (policy.roles && policy.roles[role]) || { tools: [], skills: [] }
+export function allowedTools(policy: Policy, role: string): string[] | null {
+  const rule = policy.roles[role as PolicyRole] || { tools: [], skills: [] }
   if (!rule.tools.length || rule.tools.includes('*')) return rule.tools.includes('*') ? null : []
   return rule.tools
 }
 
 /** 某个角色该放行的技能名；`*` 表示全放行（返回 null）。 */
-export function allowedSkills(policy, role) {
-  const rule = (policy.roles && policy.roles[role]) || { tools: [], skills: [] }
+export function allowedSkills(policy: Policy, role: string): string[] | null {
+  const rule = policy.roles[role as PolicyRole] || { tools: [], skills: [] }
   if (!rule.skills.length || rule.skills.includes('*')) return rule.skills.includes('*') ? null : []
   return rule.skills
 }

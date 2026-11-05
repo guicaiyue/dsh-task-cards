@@ -6,8 +6,10 @@
 
 import fs from 'node:fs'
 
-import { allowedTools, readPolicy } from './policy.mjs'
-import { DEFAULT_PROMPT, SETTINGS_FILE } from './store.mjs'
+import type { Policy } from '../../shared/contract'
+import { DEFAULT_PROMPT, DEFAULT_SETTINGS } from '../cards/defaults'
+import { SETTINGS_FILE } from '../cards/store'
+import { allowedTools, readPolicy } from '../policy/policy'
 
 export const name = 'task-cards-observer-prompt'
 
@@ -16,14 +18,32 @@ export const inject = ['systemPrompt', 'tools']
 /** 系统提示词的 section 名：取一个我们自己的名字，靠 complete 独占整段系统提示词。 */
 const OBSERVER_SECTION = 'task-cards:observer-prompt'
 
-function readPrompt(file) {
+export interface ObserverPromptConfig {
+  settingsFile?: string
+  policyFile?: string
+}
+
+function readPrompt(file: string | undefined): string {
   try {
-    const raw = JSON.parse(fs.readFileSync(file || SETTINGS_FILE, 'utf8'))
-    if (typeof raw?.systemPrompt === 'string' && raw.systemPrompt.trim()) return raw.systemPrompt
-  } catch (err) {
+    const raw = JSON.parse(fs.readFileSync(file || SETTINGS_FILE, 'utf8')) as Record<
+      string,
+      unknown
+    >
+    if (typeof raw.systemPrompt === 'string' && raw.systemPrompt.trim()) return raw.systemPrompt
+  } catch {
     /* 读不到就用默认的：宁可用内置提示词，也不要让观察者带着空调试 */
   }
   return DEFAULT_PROMPT
+}
+
+interface PromptCtx {
+  tools: { schemas(): Array<{ name: string }>; restrict(options: { deny: string[] }): unknown }
+  systemPrompt: {
+    section(spec: Record<string, unknown>): () => void
+    getSectionOrder(name: string): number
+    suppressRuntimeContext?(): () => void
+  }
+  effect(fn: () => (() => void) | undefined, label: string): unknown
 }
 
 /**
@@ -31,24 +51,30 @@ function readPrompt(file) {
  * preset 行里没有 tool 插件，但宿主全局注册的工具（horon / design_* / team_* …）
  * 仍然会进模型请求；这些定义既浪费 token 又诱导模型去用工具，必须清干净。
  */
-function tightenTools(ctx, denied, policy) {
+function tightenTools(ctx: PromptCtx, denied: Set<string>, policy: Policy): void {
   try {
     const allowed = allowedTools(policy, 'observer')
     if (allowed === null) return // 策略写 "*"：全放行，不干预
     const schemas = ctx.tools.schemas()
     const names = schemas
       .map((schema) => schema.name)
-      .filter((name) => name && name !== 'run_code' && !denied.has(name) && !allowed.includes(name))
+      .filter(
+        (toolName) =>
+          toolName &&
+          toolName !== 'run_code' &&
+          !denied.has(toolName) &&
+          !allowed.includes(toolName),
+      )
     if (!names.length) return
     ctx.tools.restrict({ deny: names })
-    for (const name of names) denied.add(name)
-  } catch (err) {
+    for (const toolName of names) denied.add(toolName)
+  } catch {
     /* 宿主没有 restrict 或当前 scope 不支持：退化成「至少没有工具可用」 */
   }
 }
 
-export function apply(ctx, config = {}) {
-  const denied = new Set()
+export function apply(ctx: PromptCtx, config: ObserverPromptConfig = {}): void {
+  const denied = new Set<string>()
   // 白名单每次都从 policy.json 现读：改文件、存设置都能立刻生效，不用重启。
   const policy = () => readPolicy(config.policyFile)
   const text = () => {
@@ -59,7 +85,7 @@ export function apply(ctx, config = {}) {
   let order = 0
   try {
     order = ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX')
-  } catch (err) {
+  } catch {
     /* 拿不到顺序就排在最前 */
   }
 
@@ -78,8 +104,14 @@ export function apply(ctx, config = {}) {
   )
 
   try {
-    ctx.effect(() => ctx.systemPrompt.suppressRuntimeContext(), 'task-cards: observer without runtime context')
-  } catch (err) {
+    ctx.effect(
+      () => ctx.systemPrompt.suppressRuntimeContext?.(),
+      'task-cards: observer without runtime context',
+    )
+  } catch {
     /* 老宿主可能没有这个口子，没有就算了 */
   }
 }
+
+/** 默认设置里的提示词也在观察者设置缺失时兜底。 */
+export { DEFAULT_SETTINGS }

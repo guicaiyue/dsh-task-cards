@@ -1,0 +1,24 @@
+# 本地闸门：提交时只跑快的，推送前跑重的。
+# 绕过：LEFTHOOK=0 git commit …（CI 会重跑全部检查）
+
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{ts,tsx,json,yml,yaml}"
+      run: pnpm biome check --write --staged --no-errors-on-unmatched
+      stage_fixed: true
+    typecheck:
+      run: pnpm typecheck
+    test:
+      run: pnpm vitest run --reporter=dot
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm commitlint --edit {1}
+
+pre-push:
+  commands:
+    verify:
+      run: pnpm verify
