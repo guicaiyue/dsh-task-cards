@@ -10,7 +10,11 @@ pnpm dev          # 改 src/** 自动重建 lib/，宿主 500 ms 内热重载客
 pnpm verify       # lint → typecheck → test → build → ABI → 代码预算（推之前必须绿）
 ```
 
-改宿主要重启宿主进程才生效；改客户端只要 `pnpm dev` 重建（`dsh-client-hmr` 轮询 bundle mtime）。
+改宿主、改客户端都**不用重启 dsh**：`pnpm dev`（或 `pnpm build`）落盘产物后 1–2 秒内生效。
+- 客户端：`dsh-client-hmr` 每 500 ms 轮询 bundle，重建后浏览器自动重载模块。
+- 宿主：`dsh-hmr` 监听本仓库所在目录（本机 profile 的 `root` 是 `/vol1/1000/开发/NAS/dsh-plugins`），
+  产物变化即重载插件、重跑 `apply`，卸载时走 `effect` 的 disposer。
+只有装/升级依赖、改环境变量这类「不在 HMR 队列里」的变更才需要重启，见 [docs/commands.md](docs/commands.md#热重载)。
 
 ## 目录约定（写之前先想清楚放哪）
 

@@ -30,7 +30,8 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 | 会话卡点「查看详情」 | 弹窗显示标题、卡本身、时间线（用户/模型分段）；Esc 与点遮罩都能关 |
 | 提示词页 | 显示默认提示词；改一句 → 保存 → 再刷新仍在 |
 | 深色主题 | `body[data-ds-dark-theme]` 下面板配色跟着变 |
-| 热重载 | 改 `src/client/**` 并 `pnpm dev`，浏览器不刷新也会出现新 UI（宿主 500 ms 轮询 bundle） |
+| 客户端热重载 | 改 `src/client/**` 并 `pnpm dev`，浏览器不刷新也会出现新 UI（宿主 500 ms 轮询 bundle） |
+| 宿主热重载 | 改 `src/host/**` 并 `pnpm dev`，**1–2 s 后**接口行为即变（不用重启 dsh）；用一次可观察的改动验证（如错误码/文案） |
 
 ## 3. 观察者（可选，会产生真实模型调用）
 

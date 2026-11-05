@@ -41,6 +41,9 @@
 4. **preset 声明的 plugins 按声明方 baseUrl 解析**，所以写绝对 `file://` URL；loader 会缓存模块，所以 URL 带 `?v=<ts>` 让改动的提示词立刻生效。
 5. **热重载会在同一进程再跑一次 `apply`**，preset 注册会撞 `Duplicate agent preset`。`preset.ts` 里先撤上一轮（disposer 存在 `globalThis` 的 Symbol 槽），再兜底清 `definitions`。
 6. **客户端 bundle 必须带 `sourceMappingURL`**，否则面板报错时只能看到一行压缩代码。
+7. **宿主代码是热重载的，别急着说「要重启」**：`dsh-hmr` 监听 profile `cordis.patch.yml` 里的 `root`
+   （本机 = `/vol1/1000/开发/NAS/dsh-plugins`），产物落盘 1–2 s 后插件被替换、`apply` 重跑。
+   只有装/升级依赖、改环境变量这类不在 HMR 队列里的变更才需要重启。验证方法见 `docs/commands.md#热重载`。
 
 ## 升级 DSH 后的核对清单
 
