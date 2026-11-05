@@ -46,7 +46,7 @@ export function observerSessionId(attempt: number): string {
 }
 
 export async function runObserverSession(options: RunOnceOptions): Promise<RunOnceResult> {
-  const { ctx, config, input, userText, attempt, waiter, log } = options
+  const { ctx, config, userText, attempt, waiter, log } = options
   const sessionId = observerSessionId(attempt)
   const expects = waiter.expect(sessionId, config.timeoutMs)
   const controller = new AbortController()

@@ -12,7 +12,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "style": {
         "useConst": "error",
         "noNonNullAssertion": "error",
@@ -21,6 +21,9 @@
       "suspicious": {
         "noExplicitAny": "error",
         "noConsole": "off"
+      },
+      "complexity": {
+        "useOptionalChain": "off"
       }
     }
   },
