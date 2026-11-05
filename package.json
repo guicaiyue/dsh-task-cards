@@ -1,6 +1,6 @@
 {
   "name": "dsh-task-cards",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DSH 任务卡：回合结束后由无工具的观察者会话把值得留下的事记成卡（要我决策 / 要我知晓 / 自动处理），面板内直接审批与执行",
   "type": "module",
   "private": true,

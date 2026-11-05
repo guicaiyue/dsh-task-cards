@@ -1,5 +1,11 @@
 # dsh-task-cards
 
+## 0.1.1
+
+### Patch Changes
+
+- `/inspect` 缺 `id` 时返回 400 `MISSING_ID`（原来会掉成 500 `INTERNAL_ERROR`），与 `/timeline` 的行为一致；补一例路由测试。
+
 ## 0.1.0
 
 ### Minor Changes
