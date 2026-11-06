@@ -29,12 +29,12 @@ export function AdviceChip({ t, card, busy, onRedecide }: Props) {
       <span className={`dtc-chip ${verdictTone(advice.verdict)}`}>
         {verdictLabel(t, advice.verdict)}
       </span>
+      <span className="dtc-advice-line-confidence">{confidenceLabel(t, advice.confidence)}</span>
       {advice.summary ? (
         <span className="dtc-advice-line-summary" title={advice.summary}>
           {advice.summary}
         </span>
       ) : null}
-      <span className="dtc-advice-line-confidence">{confidenceLabel(t, advice.confidence)}</span>
     </div>
   )
 }
