@@ -1,7 +1,7 @@
 // POST /action：完成 / 忽略 / 重开 / 立即执行 / 作答 / 采纳方案 / 批红 / 返工标记 / 删除。
 //
-// 人的决定在这里顺手落一条判例（作答 / 完成 / 忽略 / 采纳方案 / 批红）。
-// 判例只由人的动作产生，代理人只读不写。
+// 人的决定在这里顺手落一条判例（作答 / 完成 / 忽略 / 采纳方案 / 批红），只对决策卡：
+// 通知卡与自动卡的关闭不是决定。判例只由人的动作产生，代理人只读不写。
 
 import type { Card } from '../../shared/contract'
 import { ACTION_EVENT, ACTION_RESULT, isCardAction, isClosed } from '../../shared/state'
@@ -45,7 +45,9 @@ export function createActionHandler(deps: RouteDeps) {
     const status = ACTION_RESULT[name]
     const patched = await cards.patch(id, { status }, ACTION_EVENT[name])
     const choice = choiceOfAction(name)
-    if (!wasClosed && choice) {
+    // 判例只收决策卡上的选择：关掉一条通知、取消一个自动动作都不是决定，
+    // 进了判例库就会变成决策代理人的「同类判例」，污染它的判断。
+    if (!wasClosed && choice && patched.kind === 'decision') {
       await recordChoice(precedents, patched, choice).catch((err: unknown) =>
         log(`判例写入失败：${messageOf(err)}`),
       )

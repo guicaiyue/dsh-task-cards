@@ -272,9 +272,9 @@ describe('决策阶段路由', () => {
     }
   })
 
-  it('完成写「批了」、忽略写「不批，忽略」，重复完成不重复落判例', async () => {
-    const done = await seedCard('把面板搭起来')
-    const dropped = await seedCard('换个配色')
+  it('决策卡完成写「批了」、忽略写「不批，忽略」，重复完成不重复落判例', async () => {
+    const done = await seedCard('把面板搭起来', { kind: 'decision' })
+    const dropped = await seedCard('换个配色', { kind: 'decision' })
     const { routes, dispose } = harness()
     try {
       const first = await call(routes, 'POST', `${API}/action`, {
@@ -290,6 +290,26 @@ describe('决策阶段路由', () => {
 
       const precedents = await listPrecedents(routes)
       expect(precedents.map((row) => row.choice)).toEqual(['不批，忽略', '批了'])
+    } finally {
+      dispose()
+    }
+  })
+
+  it('通知卡 / 自动卡的关闭不落判例：判例只从决策卡产生', async () => {
+    const note = await seedCard('跑完了，通知一下', { kind: 'info' })
+    const retry = await seedCard('限流重试', { kind: 'auto' })
+    const { routes, dispose } = harness()
+    try {
+      await call(routes, 'POST', `${API}/action`, {
+        body: JSON.stringify({ id: note.id, action: 'acknowledge' }),
+      })
+      await call(routes, 'POST', `${API}/action`, {
+        body: JSON.stringify({ id: note.id, action: 'dismiss' }),
+      })
+      await call(routes, 'POST', `${API}/action`, {
+        body: JSON.stringify({ id: retry.id, action: 'dismiss' }),
+      })
+      expect(await listPrecedents(routes)).toHaveLength(0)
     } finally {
       dispose()
     }

@@ -49,7 +49,7 @@ function CardBlockActions({ t, card, busy, onAction }: Props) {
           {t('approve')}
         </button>
       ) : null}
-      {card.kind === 'info' ? (
+      {card.kind === 'info' && card.source === 'human' ? (
         <button
           type="button"
           className="dtc-btn is-primary"
@@ -69,14 +69,16 @@ function CardBlockActions({ t, card, busy, onAction }: Props) {
           {t('runNow')}
         </button>
       ) : null}
-      <button
-        type="button"
-        className="dtc-btn"
-        disabled={busy}
-        onClick={() => onAction(card, 'dismiss')}
-      >
-        {t('dismiss')}
-      </button>
+      {card.kind === 'info' ? null : (
+        <button
+          type="button"
+          className="dtc-btn"
+          disabled={busy}
+          onClick={() => onAction(card, 'dismiss')}
+        >
+          {t('dismiss')}
+        </button>
+      )}
       <button
         type="button"
         className="dtc-btn is-danger"

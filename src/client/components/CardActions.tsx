@@ -1,4 +1,7 @@
-// 卡片行右侧的按钮组：按 kind/status 决定出现哪几个。
+// 卡片行右侧的按钮组：按 kind/source/status 决定出现哪几个。
+//
+// 观察者写的 info 卡是通知：看到即已读（CardRow 里自动 acknowledge），
+// 不给「知道了 / 忽略」这种没有行为差异的二选一。人手写的备忘才需要自己勾掉。
 
 import type { Card, CardActionName, Translate } from '../types'
 
@@ -14,7 +17,7 @@ interface Props extends CardHandlers {
   closed: boolean
 }
 
-/** 主操作：决策卡批准、知晓卡知道了、自动卡立即执行。 */
+/** 主操作：决策卡批准、手写备忘知道了、自动卡立即执行。通知卡没有主操作。 */
 function PrimaryAction({ t, card, busy, onAction }: Props) {
   if (card.kind === 'decision') {
     return (
@@ -40,6 +43,7 @@ function PrimaryAction({ t, card, busy, onAction }: Props) {
       </button>
     )
   }
+  if (card.source === 'agent') return null
   return (
     <button
       type="button"
@@ -52,8 +56,22 @@ function PrimaryAction({ t, card, busy, onAction }: Props) {
   )
 }
 
-/** 其余操作：忽略/重开、查看详情、删除。 */
+/** 其余操作：忽略/重开、查看详情、删除。通知卡只有删除（它已经自动已读）。 */
 function RestActions({ t, card, busy, closed, onAction, onDetail }: Props) {
+  const remove = (
+    <button
+      type="button"
+      className="dtc-btn is-danger"
+      disabled={busy}
+      onClick={() => onAction(card, 'delete')}
+    >
+      {t('remove')}
+    </button>
+  )
+  // 通知卡没有「忽略」：忽略一条通知和读过它没有区别，判例库也不该收这个选择。
+  if (card.kind === 'info') {
+    return <>{remove}</>
+  }
   return (
     <>
       {closed ? (
@@ -87,14 +105,7 @@ function RestActions({ t, card, busy, closed, onAction, onDetail }: Props) {
           {t('detail')}
         </button>
       ) : null}
-      <button
-        type="button"
-        className="dtc-btn is-danger"
-        disabled={busy}
-        onClick={() => onAction(card, 'delete')}
-      >
-        {t('remove')}
-      </button>
+      {remove}
     </>
   )
 }

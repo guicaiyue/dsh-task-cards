@@ -1,6 +1,8 @@
 // 一行卡片：左侧色轨标 kind，中间标题/明细/元信息/票拟，右侧动作。
 // 同一行既能在会话树里出现，也能单独使用，所以只接最小 props。
 
+import { useEffect, useRef } from 'react'
+
 import { isClosed } from '../../shared/state'
 import type { Card, Translate } from '../types'
 import { AdviceChip } from './AdviceChip'
@@ -21,6 +23,15 @@ export function CardRow({ t, card, busy, onAction, onAnswer, onDetail, onRedecid
   const isAuto = card.kind === 'auto'
   const closed = isClosed(card.status)
   const cls = `dtc-card${isDecision ? ' is-decision' : isAuto ? ' is-auto' : ''}${closed ? ' is-closed' : ''}`
+  // 观察者写的 info 卡是通知：渲染到就算已读，不再要人点一下。
+  // 只对 agent 卡——人手写的备忘还要人自己勾掉。
+  const autoRead = useRef(false)
+  useEffect(() => {
+    if (autoRead.current) return
+    if (busy || card.kind !== 'info' || card.source !== 'agent' || card.status !== 'open') return
+    autoRead.current = true
+    onAction(card, 'acknowledge')
+  }, [busy, card, onAction])
   return (
     <div className={cls}>
       <div className="dtc-rail" />

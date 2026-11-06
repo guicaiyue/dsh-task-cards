@@ -52,6 +52,8 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 
 `done` / `dismissed` / `acknowledged` 是「已结束」（`CLOSED_STATUSES`），面板的 KPI 与分组据此计算。
 
+**通知卡不走「处理」**：观察者写的 `info` 卡（`source=agent`）是通知，行上没有「知道了 / 忽略」两个按钮——两个动作在状态上完全等价，差别只是 `dismiss` 会写一条判例（已限制为只对决策卡生效）。面板渲染到它时自动发 `acknowledge`：看到即已读，KPI「要我知晓」就是未读数。人手写的 `info` 卡是备忘，保留「知道了」由人自己勾掉。
+
 **面板顺序**（`src/shared/state.ts` 的 `sortCards`）：待我处理的最前——`decision` → `info` → `auto`，已结束沉底；同车道先看 `severity`（high → normal → low），再看 `createdAt`（新的在前）。会话树按组内最该处理的卡排组，组内同理，所以面板第一条永远是等我动的那条。
 
 ## 设置（`SettingsSchema`）
@@ -76,7 +78,7 @@ card.advice = { verdict: approve|reject|modify|wait, summary, confidence, questi
 precedent = { id, at, cardId, title, question, choice, outcome: unknown|valid|reworked, note, keywords[] }
 ```
 
-判例只由人的动作产生（作答 / 完成 / 忽略 / 采纳方案 / 聊天里作答）。`outcome=reworked` 的判例**不进决策输入**——用户的硬规则。数据在 `precedents.json`，上限 500 条。
+判例只由人的动作产生（作答 / 完成 / 忽略 / 采纳方案 / 批红 / 聊天里作答），且**只收决策卡上的选择**：关掉一条通知、取消一个自动动作不是决定，不进判例库。`outcome=reworked` 的判例**不进决策输入**——用户的硬规则。数据在 `precedents.json`，上限 500 条。
 
 ## 策略（`PolicySchema`）
 

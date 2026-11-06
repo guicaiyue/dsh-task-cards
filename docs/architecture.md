@@ -66,7 +66,7 @@ parseAdvice（容错 JSON）→ applyAdvice
    ▼
 面板：行内 chip / 详情里的方案对照 → 采纳（/action adopt）或返工标记（mark-reworked）
    ▼
-用户的决定 → precedents.json（作答 / 完成 / 忽略 / 采纳 / 聊天作答）
+用户的决定 → precedents.json（决策卡的作答 / 完成 / 忽略 / 批红 / 采纳 / 聊天作答）
 ```
 
 决策会话也有自己的 `Waiter`（`wire.ts` 的 `routeDecisionEvents`），触发侧显式跳过 `card-dec-` 前缀，避免票拟 JSON 反过来被观察成卡。

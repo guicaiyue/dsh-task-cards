@@ -284,6 +284,35 @@ describe('面板', () => {
     expect(texts[texts.length - 1]).toBe('已经处理完的决策')
   })
 
+  it('观察者的通知卡没有「知道了 / 忽略」，渲染即自动已读', async () => {
+    const { calls } = stubApi({
+      cards: [card({ id: 'c-n', kind: 'info', source: 'agent', title: '发布完成' })],
+    })
+    render(<Panel t={translate} />)
+    await screen.findByText('发布完成')
+    expect(screen.queryByText(zh.know as string)).toBeNull()
+    expect(screen.queryByText(zh.dismiss as string)).toBeNull()
+    await waitFor(() => {
+      const ack = calls.find(
+        (item) =>
+          item.url.endsWith('/api/action') &&
+          (item.body as { action?: string } | undefined)?.action === 'acknowledge',
+      )
+      expect((ack?.body as { id?: string } | undefined)?.id).toBe('c-n')
+    })
+  })
+
+  it('人手写的知晓卡保留「知道了」，不会自动已读', async () => {
+    const { calls } = stubApi({
+      cards: [card({ id: 'c-h', kind: 'info', source: 'human', title: '记得交房租' })],
+    })
+    render(<Panel t={translate} />)
+    await screen.findByText('记得交房租')
+    expect(screen.getByText(zh.know as string)).toBeTruthy()
+    expect(screen.queryByText(zh.dismiss as string)).toBeNull()
+    expect(calls.some((item) => item.url.endsWith('/api/action'))).toBe(false)
+  })
+
   it('顶部是「卡片 / 观察者 / 决策」三个页签，能来回切', async () => {
     stubApi({ cards: [card()] })
     render(<Panel t={translate} />)
