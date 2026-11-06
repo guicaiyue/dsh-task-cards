@@ -1,7 +1,12 @@
-// POST /action：完成 / 忽略 / 重开 / 立即执行 / 作答 / 删除。
+// POST /action：完成 / 忽略 / 重开 / 立即执行 / 作答 / 采纳方案 / 返工标记 / 删除。
+//
+// 人的决定在这里顺手落一条判例（作答 / 完成 / 忽略 / 采纳方案）。
+// 判例只由人的动作产生，代理人只读不写。
 
-import { ACTION_EVENT, ACTION_RESULT, isCardAction } from '../../shared/state'
+import type { Card } from '../../shared/contract'
+import { ACTION_EVENT, ACTION_RESULT, isCardAction, isClosed } from '../../shared/state'
 import { StoreError } from '../cards/store'
+import { choiceOfAction, markReworked, recordChoice } from '../decision/precedent'
 import { asString } from '../host-api'
 import type { HttpRequestLike, HttpResponseLike } from '../http'
 import { readJson, sendJson } from '../http'
@@ -10,7 +15,12 @@ import { answerPendingQuestion } from '../question/pending'
 import type { CardQuestion } from '../question/types'
 import type { RouteDeps } from './deps'
 
-export function createActionHandler({ cards, scanner, log, runtime }: RouteDeps) {
+function messageOf(err: unknown): string {
+  return (err as Error)?.message || String(err)
+}
+
+export function createActionHandler(deps: RouteDeps) {
+  const { cards, scanner, precedents, log } = deps
   return async (req: HttpRequestLike, res: HttpResponseLike): Promise<unknown> => {
     const body = await readJson(req)
     const id = asString(body.id)
@@ -24,27 +34,32 @@ export function createActionHandler({ cards, scanner, log, runtime }: RouteDeps)
       const result = await scanner.execute(card)
       return sendJson(res, 200, { ok: true, result, card: cards.find(id) })
     }
-    if (name === 'answer') return answerCard({ body, card, id, cards, runtime, res })
+    if (name === 'answer') return answerCard(deps, card, asString(body.option || body.text), res)
+    if (name === 'adopt') return adoptCard(deps, card, asString(body.option), res)
+    if (name === 'mark-reworked') return reworkCard(deps, card, asString(body.option), res)
     if (!isCardAction(name)) throw new StoreError('BAD_ACTION', '未知操作')
+    const wasClosed = isClosed(card.status)
     const status = ACTION_RESULT[name]
     const patched = await cards.patch(id, { status }, ACTION_EVENT[name])
+    const choice = choiceOfAction(name)
+    if (!wasClosed && choice) {
+      await recordChoice(precedents, patched, choice).catch((err: unknown) =>
+        log(`判例写入失败：${messageOf(err)}`),
+      )
+    }
     log(`卡片动作：${name} → ${status}`)
     return sendJson(res, 200, { ok: true, card: patched })
   }
 }
 
-interface AnswerOptions {
-  body: Record<string, unknown>
-  card: NonNullable<ReturnType<RouteDeps['cards']['find']>>
-  id: string
-  cards: RouteDeps['cards']
-  runtime: RouteDeps['runtime']
-  res: HttpResponseLike
-}
-
 /** 卡片作答：先试宿主的原生提问通道，会话没了就模拟用户输入。 */
-async function answerCard({ body, card, id, cards, runtime, res }: AnswerOptions) {
-  const text = String(body.option || body.text || '').trim()
+async function answerCard(
+  deps: RouteDeps,
+  card: Card,
+  raw: string,
+  res: HttpResponseLike,
+): Promise<unknown> {
+  const text = raw.trim()
   if (!text) throw new StoreError('MISSING_ANSWER', '缺少要回答的内容')
   const question = (card.question || {}) as CardQuestion
   const sessionId = question.sessionId || (card.origin && card.origin.sessionId)
@@ -55,11 +70,46 @@ async function answerCard({ body, card, id, cards, runtime, res }: AnswerOptions
   const native = sessionId ? answerPendingQuestion(sessionId, answers) : false
   const result = native
     ? { via: 'question' as const, answered: true }
-    : await answerQuestion(card, text, runtime())
-  await cards.patch(
-    id,
+    : await answerQuestion(card, text, deps.runtime())
+  const wasClosed = isClosed(card.status)
+  const patched = await deps.cards.patch(
+    card.id,
     { status: 'done', answer: text, answeredAt: Date.now(), answeredVia: 'card' },
     'answered',
   )
-  return sendJson(res, 200, { ok: true, result, card: cards.find(id) })
+  if (!wasClosed) {
+    await recordChoice(deps.precedents, patched, text).catch((err: unknown) =>
+      deps.log(`判例写入失败：${messageOf(err)}`),
+    )
+  }
+  return sendJson(res, 200, { ok: true, result, card: deps.cards.find(card.id) })
+}
+
+/** 采纳票拟里的第 N 个方案：option 是 0-based 序号，等价于用它的 answer 作答。 */
+async function adoptCard(
+  deps: RouteDeps,
+  card: Card,
+  raw: string,
+  res: HttpResponseLike,
+): Promise<unknown> {
+  const index = Number.parseInt(raw.trim(), 10)
+  const options = card.advice?.options || []
+  const option =
+    Number.isInteger(index) && index >= 0 && index < options.length ? options[index] : undefined
+  if (!option) throw new StoreError('BAD_OPTION', '方案序号不对')
+  const text = option.answer.trim()
+  if (!text) throw new StoreError('MISSING_ANSWER', '这个方案没有能直接回给原会话的话')
+  return answerCard(deps, card, text, res)
+}
+
+/** 标记「这个决定后来返工了」：判例改 reworked，卡上留事件，不改状态不执行动作。 */
+async function reworkCard(
+  deps: RouteDeps,
+  card: Card,
+  note: string,
+  res: HttpResponseLike,
+): Promise<unknown> {
+  const result = await markReworked(deps.cards, deps.precedents, card, note)
+  deps.log(`卡片动作：mark-reworked（判例 ${result.precedent.id}）`)
+  return sendJson(res, 200, { ok: true, ...result, card: deps.cards.find(card.id) })
 }

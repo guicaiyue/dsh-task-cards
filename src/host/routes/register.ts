@@ -8,6 +8,7 @@ import type { HttpRequestLike, HttpResponseLike, RouteSpec } from '../http'
 import { fail } from '../http'
 import { createActionHandler } from './action'
 import { createCardsHandler } from './cards'
+import { createDecisionsHandler } from './decisions'
 import type { RouteDeps } from './deps'
 import { createInspectHandler } from './inspect'
 import { createModelsHandler } from './models'
@@ -92,6 +93,11 @@ export function registerRoutes(options: RegisterOptions): void {
 
 /** 路由表：路径常量来自 shared/routes.ts，两端共用。 */
 function routeTable(deps: RouteDeps): RouteSpec[] {
+  return [...cardRoutes(deps), ...panelRoutes(deps)]
+}
+
+/** 卡与动作：面板的主干。 */
+function cardRoutes(deps: RouteDeps): RouteSpec[] {
   return [
     {
       kind: 'exact',
@@ -105,6 +111,18 @@ function routeTable(deps: RouteDeps): RouteSpec[] {
       methods: ['POST'],
       handler: createActionHandler(deps),
     },
+    {
+      kind: 'exact',
+      path: API_ROUTES.decisions,
+      methods: ['GET', 'POST'],
+      handler: createDecisionsHandler(deps),
+    },
+  ]
+}
+
+/** 设置与只读面板：模型、诊断、策略、工作区、时间线、标题。 */
+function panelRoutes(deps: RouteDeps): RouteSpec[] {
+  return [
     {
       kind: 'exact',
       path: API_ROUTES.settings,

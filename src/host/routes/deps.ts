@@ -1,13 +1,18 @@
 // 路由依赖：所有 handler 共用的数据与能力，由 index 装配后传入。
 
 import type { Policy } from '../../shared/contract'
-import type { SettingsStore, Store } from '../cards/store'
+import type { PrecedentStore, SettingsStore, Store } from '../cards/store'
+import type { Decision } from '../decision/runner'
 import type { HostRuntime } from '../host-api'
 import type { Scanner } from '../scanner/scanner'
 
 export interface RouteDeps {
   cards: Store
   settings: SettingsStore
+  /** 判例库：GET /decisions 与人的决定都写这里。 */
+  precedents: PrecedentStore
+  /** 决策代理人：POST /decisions 的「重新出票拟」走它。 */
+  decision: Decision
   log: (line: string) => void
   runtime: () => HostRuntime | null
   scanner: Scanner

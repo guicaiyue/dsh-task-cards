@@ -23,6 +23,8 @@ export interface ObserverOptions {
   cards: Store
   records: RecordStore
   log?: Log
+  /** 建卡成功后的回调（决策阶段接手这批卡）；不允许阻塞观察者的记录落盘。 */
+  onCardsCreated?: (cards: Card[]) => void
 }
 
 export class Observer {
@@ -32,14 +34,16 @@ export class Observer {
   readonly #cards: Store
   readonly #records: RecordStore
   readonly #log: Log
+  readonly #onCardsCreated: ((cards: Card[]) => void) | undefined
   #queue: Promise<unknown> = Promise.resolve()
 
-  constructor({ getCtx, settings, cards, records, log }: ObserverOptions) {
+  constructor({ getCtx, settings, cards, records, log, onCardsCreated }: ObserverOptions) {
     this.#getCtx = getCtx
     this.#settings = settings
     this.#cards = cards
     this.#records = records
     this.#log = log || (() => {})
+    this.#onCardsCreated = onCardsCreated
   }
 
   /** 排队串行：不并发开一堆观察者会话。 */
@@ -95,6 +99,8 @@ export class Observer {
     }
 
     const created = await this.#createCards(input, last)
+    // 交给决策阶段（排队，立刻返回）；记录落盘不因它延后。
+    this.#notifyCreated(created)
     const entry = await this.#records.add({
       ...base,
       status: created.length > 0 ? 'ok' : 'empty',
@@ -126,6 +132,16 @@ export class Observer {
       durationMs,
       attempts: last ? last.attempts : undefined,
       excerpt: last && last.text ? last.text.slice(0, 400) : '',
+    }
+  }
+
+  #notifyCreated(cards: Card[]): void {
+    if (!cards.length || !this.#onCardsCreated) return
+    try {
+      this.#onCardsCreated(cards)
+    } catch (err) {
+      // 决策阶段出问题不能影响观察者本身：日志记一句就过。
+      this.#log(`交接决策阶段失败：${(err as Error)?.message || String(err)}`)
     }
   }
 

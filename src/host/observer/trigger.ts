@@ -6,6 +6,7 @@
 
 import type { Settings } from '../../shared/contract'
 import type { Store } from '../cards/store'
+import { isDecisionSession } from '../decision/ids'
 import type { Log, SessionEventLike } from '../host-api'
 import { asNumber, asRecord, asString } from '../host-api'
 import { textOf } from '../question/record'
@@ -106,6 +107,8 @@ function createSessionEventHandler({
         })
         return
       }
+      // 决策会话的输出是给面板的票拟 JSON，不是用户的一轮：同样不许被观察。
+      if (isDecisionSession(sessionId)) return
       // 只认「人发起的顶层会话」：子代理是模型的内部动作，不是用户的一轮。
       const header = asRecord(session.header)
       const isChild = !!header.parentSession || Number(header.delegationDepth ?? 0) > 0
@@ -159,6 +162,8 @@ function createAgentStatusHandler({ observer, log, tracker }: HandlerContext) {
         if (status === 'idle') observer.waiter.finish(sessionId)
         return
       }
+      // 决策会话的 waiter 由 wire.ts 单独路由，这里不碰。
+      if (isDecisionSession(sessionId)) return
       if (status !== 'idle') return
       const state = tracker.get(sessionId)
       if (!state || !state.hasUserInput || !state.lastReply) return
