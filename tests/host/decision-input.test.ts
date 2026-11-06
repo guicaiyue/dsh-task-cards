@@ -81,6 +81,20 @@ describe('决策输入构造', () => {
     expect(precedents[0]?.keywords).toEqual(['登录'])
   })
 
+  it('卡片块带上观察者给的 reason（分类凭据），空则是空串', () => {
+    const input = buildDecisionInput(
+      [
+        makeCard({ id: 'c-1', origin: { reason: '模型在等你确认是否开始重构' } }),
+        makeCard({ id: 'c-2' }),
+      ],
+      [],
+      30,
+    )
+    const cards = JSON.parse(blockOf(input, 'cards')) as Array<Record<string, unknown>>
+    expect(cards[0]?.reason).toBe('模型在等你确认是否开始重构')
+    expect(cards[1]?.reason).toBe('')
+  })
+
   it('有到点动作的卡把 action.input 带上（说明别重复安排）', () => {
     const input = buildDecisionInput(
       [makeCard({ action: { type: 'prompt', delayMs: 600000, input: '10 分钟后重试' } })],

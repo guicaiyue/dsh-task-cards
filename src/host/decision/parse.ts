@@ -70,17 +70,34 @@ function toOptions(value: unknown): AdviceOption[] {
   return options
 }
 
+/** 推荐序号：整数、夹在 options 长度内；越界/非整数回 0（宁可指向第一条也不乱指）。 */
+function toChosen(value: unknown, options: AdviceOption[]): number {
+  const index = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
+  if (!Number.isInteger(index) || index < 0 || index >= options.length) return 0
+  return index
+}
+
+/** 严格布尔：只有 true 和字符串 'true' 算真；别让 'false'、1 这种把执行放出去。 */
+function toAutoApply(value: unknown): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') return value.trim().toLowerCase() === 'true'
+  return false
+}
+
 function toDraft(value: unknown, knownIds: ReadonlySet<string>): AdviceDraft | null {
   const raw = asRecord(value)
   const cardId = text(raw.cardId ?? raw.id, 120)
   if (!cardId || !knownIds.has(cardId)) return null
+  const options = toOptions(raw.options)
   return {
     cardId,
     verdict: pickEnum<AdviceVerdict>(raw.verdict, VERDICTS, 'wait'),
     summary: text(raw.summary, 400),
-    options: toOptions(raw.options),
+    options,
     basis: text(raw.basis, 600),
     precedentIds: textList(raw.precedentIds, 6),
+    chosen: toChosen(raw.chosen, options),
+    autoApply: toAutoApply(raw.autoApply),
     confidence: pickEnum<CardSeverity>(raw.confidence, CONFIDENCES, 'normal'),
     question: text(raw.question, 400),
     lane: pickEnum<CardKind>(raw.lane, LANES, 'decision'),

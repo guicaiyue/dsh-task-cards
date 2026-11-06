@@ -28,6 +28,8 @@ function toAdvice(draft: AdviceDraft, applied: boolean): Advice {
     options: draft.options,
     basis: draft.basis,
     precedentIds: draft.precedentIds,
+    chosen: draft.chosen,
+    autoApply: draft.autoApply,
     confidence: draft.confidence,
     question: draft.question,
     lane: draft.lane,

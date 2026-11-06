@@ -20,6 +20,8 @@ function makeDraft(overrides: Partial<AdviceDraft> = {}): AdviceDraft {
     options: [],
     basis: '无同类判例',
     precedentIds: [],
+    chosen: 0,
+    autoApply: false,
     confidence: 'normal',
     question: '',
     lane: 'decision',

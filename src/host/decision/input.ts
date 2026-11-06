@@ -27,6 +27,8 @@ interface DecisionCardRow {
   kind: string
   severity: string
   action: string
+  /** 观察者为什么判成这个 kind：代理人判断时可用的分类凭据。 */
+  reason: string
 }
 
 interface DecisionPrecedentRow {
@@ -54,6 +56,7 @@ function cardRow(card: Card): DecisionCardRow {
     severity: card.severity,
     // 非空说明这张卡已经被安排过到点动作，决策时不该再重复安排。
     action: card.action ? clip(card.action.input, CARD_ACTION_MAX) : '',
+    reason: clip(card.origin?.reason, CARD_ACTION_MAX),
   }
 }
 

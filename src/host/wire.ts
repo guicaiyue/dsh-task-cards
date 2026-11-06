@@ -115,12 +115,14 @@ function routeDecisionEvents(root: PluginRoot, decision: Decision): void {
 
 /** 决策代理人：串行排队，观察者建完卡后接手。 */
 export function wireDecision(root: PluginRoot, deps: WireDeps): Decision {
-  const { cards, settings, precedents, log, state } = deps
+  const { cards, settings, precedents, records, log, state } = deps
   const decision = new Decision({
     getCtx: () => state.runtime,
     settings,
     cards,
     precedents,
+    // 决策每次运行都往这里落一条 phase='decision' 记录（面板的执行记录）。
+    records,
     log: (line: string) => log(`decision: ${line}`),
   })
   routeDecisionEvents(root, decision)
@@ -185,7 +187,7 @@ export function wireRoutes(
     syncPreset: () => Promise<void>
   },
 ): void {
-  const { cards, settings, precedents, log, state, scanner, decision, syncPreset } = deps
+  const { cards, settings, precedents, records, log, state, scanner, decision, syncPreset } = deps
   root.inject(['webServer'], (ctx: unknown) => {
     const webServer = (ctx as { webServer?: WebServerLike }).webServer
     if (!webServer) return
@@ -196,6 +198,7 @@ export function wireRoutes(
         cards,
         settings,
         precedents,
+        records,
         decision,
         log,
         runtime: () => state.runtime,

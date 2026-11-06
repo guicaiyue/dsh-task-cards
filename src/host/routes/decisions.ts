@@ -10,12 +10,17 @@ import type { HttpRequestLike, HttpResponseLike } from '../http'
 import { readJson, sendJson } from '../http'
 import type { RouteDeps } from './deps'
 
-export function createDecisionsHandler({ cards, precedents, decision, log }: RouteDeps) {
+/** 面板的决策记录最多回看 30 次。 */
+const DECISION_RECORD_LIMIT = 30
+
+export function createDecisionsHandler({ cards, precedents, records, decision, log }: RouteDeps) {
   return async (req: HttpRequestLike, res: HttpResponseLike): Promise<unknown> => {
     if (req.method === 'GET') {
       return sendJson(res, 200, {
         ok: true,
         precedents: precedents.list(),
+        // 最近几次决策运行（成功 / 空 / 失败都记）：面板据此展示执行记录。
+        records: records.listByPhase('decision', DECISION_RECORD_LIMIT),
         warning: precedents.warning,
       })
     }

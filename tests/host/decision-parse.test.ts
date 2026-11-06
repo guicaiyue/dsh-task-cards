@@ -76,6 +76,34 @@ describe('票拟解析', () => {
     })
   })
 
+  it('chosen 越界/非整数回 0，autoApply 只认布尔与字符串 true', () => {
+    const options = [
+      { name: '第一条', answer: 'A' },
+      { name: '第二条', answer: 'B' },
+    ]
+    const overflow = parse(JSON.stringify({ decisions: [{ cardId: 'c-1', chosen: 9, options }] }))
+    expect(overflow?.[0]?.chosen).toBe(0)
+    const negative = parse(JSON.stringify({ decisions: [{ cardId: 'c-1', chosen: -2, options }] }))
+    expect(negative?.[0]?.chosen).toBe(0)
+    const second = parse(
+      JSON.stringify({ decisions: [{ cardId: 'c-1', chosen: 1, autoApply: 'true', options }] }),
+    )
+    expect(second?.[0]?.chosen).toBe(1)
+    expect(second?.[0]?.autoApply).toBe(true)
+    const loose = parse(
+      JSON.stringify({ decisions: [{ cardId: 'c-1', autoApply: 'false', options }] }),
+    )
+    expect(loose?.[0]?.autoApply).toBe(false)
+    const numeric = parse(JSON.stringify({ decisions: [{ cardId: 'c-1', autoApply: 1, options }] }))
+    expect(numeric?.[0]?.autoApply).toBe(false)
+  })
+
+  it('没有 options 时 chosen 仍是 0，autoApply 默认 false', () => {
+    const drafts = parse(JSON.stringify({ decisions: [{ cardId: 'c-1', chosen: 2 }] }))
+    expect(drafts?.[0]?.chosen).toBe(0)
+    expect(drafts?.[0]?.autoApply).toBe(false)
+  })
+
   it('缺字段按 schema 默认值补', () => {
     const drafts = parse(JSON.stringify({ decisions: [{ cardId: 'c-1' }] }))
     expect(drafts?.[0]).toMatchObject({

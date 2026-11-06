@@ -146,6 +146,9 @@ export function coerceCards(value: unknown): CoercedCards {
       kind,
       severity,
       action,
+      reason: String(raw.reason ?? '')
+        .trim()
+        .slice(0, 300),
     })
   }
   return { ok: true, cards }

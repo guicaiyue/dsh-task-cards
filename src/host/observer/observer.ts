@@ -61,6 +61,7 @@ export class Observer {
     const ctx = this.#getCtx()
     if (!ctx || !ctx.agents || !ctx.sessionController) {
       return this.#records.add({
+        phase: 'observer',
         status: 'error',
         originSessionId: input.originSessionId,
         turn: input.turn,
@@ -121,6 +122,7 @@ export class Observer {
     durationMs: number,
   ): Omit<ObserverRecord, 'id' | 'at' | 'status'> {
     return {
+      phase: 'observer',
       originSessionId: input.originSessionId,
       turn: input.turn,
       observerSessionId: last ? last.sessionId : undefined,
@@ -158,6 +160,7 @@ export class Observer {
           sessionId: input.originSessionId,
           turn: input.turn,
           observerSessionId: last.sessionId,
+          reason: draft.reason,
         },
       })
       created.push(card)

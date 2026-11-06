@@ -159,6 +159,8 @@ const ADVICE: Advice = {
   ],
   basis: '无同类判例',
   precedentIds: [],
+  chosen: 0,
+  autoApply: false,
   confidence: 'normal',
   question: '',
   lane: 'decision',
@@ -200,7 +202,38 @@ describe('决策阶段路由', () => {
     try {
       const res = await call(routes, 'GET', `${API}/decisions`)
       expect(res.status).toBe(200)
-      expect(res.json).toMatchObject({ ok: true, precedents: [] })
+      expect(res.json).toMatchObject({ ok: true, precedents: [], records: [] })
+    } finally {
+      dispose()
+    }
+  })
+
+  it('GET /decisions 带上 phase=decision 的执行记录（观察者记录不混进来）', async () => {
+    fs.mkdirSync(DATA_DIR, { recursive: true })
+    fs.writeFileSync(
+      path.join(DATA_DIR, 'records.json'),
+      JSON.stringify([
+        {
+          id: 'r-1',
+          at: 3,
+          phase: 'decision',
+          status: 'ok',
+          cardsCreated: 2,
+          applied: 1,
+          corrected: 0,
+        },
+        { id: 'r-2', at: 2, phase: 'observer', status: 'ok', cardsCreated: 1 },
+        { id: 'r-3', at: 1, phase: 'decision', status: 'invalid', error: '不可解析' },
+      ]),
+      'utf8',
+    )
+    const { routes, dispose } = harness()
+    try {
+      const res = await call(routes, 'GET', `${API}/decisions`)
+      expect(res.status).toBe(200)
+      const records = (res.json as { records: Json[] }).records
+      expect(records.map((row) => row.id)).toEqual(['r-1', 'r-3'])
+      expect(records[0]).toMatchObject({ status: 'ok', cardsCreated: 2, applied: 1 })
     } finally {
       dispose()
     }
@@ -396,6 +429,7 @@ describe('决策阶段路由', () => {
             decisionProvider: 'p',
             decisionModel: 'm',
             decisionPrecedentLimit: 5,
+            decisionAutoApply: false,
           },
         }),
       })
@@ -407,6 +441,7 @@ describe('决策阶段路由', () => {
         decisionProvider: 'p',
         decisionModel: 'm',
         decisionPrecedentLimit: 5,
+        decisionAutoApply: false,
       })
 
       const read = await call(routes, 'GET', `${API}/settings`)

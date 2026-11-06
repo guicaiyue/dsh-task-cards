@@ -201,6 +201,9 @@ export class SettingsStore {
       Number.isFinite(patch.decisionPrecedentLimit)
     )
       next.decisionPrecedentLimit = Math.max(0, Math.trunc(patch.decisionPrecedentLimit))
+    // 自动执行开关：面板关掉以后，任何票拟都不许代跑。
+    if (typeof patch.decisionAutoApply === 'boolean')
+      next.decisionAutoApply = patch.decisionAutoApply
     await this.#doc.write(next)
     return next
   }
@@ -222,6 +225,15 @@ export class RecordStore {
   list(limit: number = RECORD_LIMIT): ObserverRecord[] {
     const all = this.#doc.read()
     return (Array.isArray(all) ? all : []).slice(0, Math.max(1, limit))
+  }
+
+  /** 按 phase 过滤（面板的决策记录只看 decision）：倒序，最多 limit 条。 */
+  listByPhase(phase: ObserverRecord['phase'], limit: number = RECORD_LIMIT): ObserverRecord[] {
+    const all = this.#doc.read()
+    return (Array.isArray(all) ? all : [])
+      .filter((record) => (record.phase || 'observer') === phase)
+      .slice(0, Math.max(1, limit))
+      .map((record) => ({ ...record }))
   }
 
   async add(

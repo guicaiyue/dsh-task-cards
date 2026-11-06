@@ -1,31 +1,29 @@
-// 跑一次决策会话：一批新建的卡 + 判例 → 票拟草稿 → 写回卡。
+// 跑一次决策会话：一批新建的卡 + 判例 → 票拟草稿 → 写回卡（必要时自动执行）。
 //
 // 和观察者一样是「无工具会话 + 事件驱动等回合结束 + 失败重试一次」；
-// 差别是它只读卡与判例，写操作只有 card.advice 和 decision → info 的车道纠正。
+// 差别是它的写操作只有三件：card.advice、decision → info 的车道纠正，
+// 以及「撤回不需要人动手」那一类票拟的自动执行（与人批红共用同一个投递函数）。
 // 失败只记日志与卡事件，绝不抛出：卡本身必须仍然可用。
+// 每次运行都落一条 phase='decision' 的执行记录（哪怕空手而归）。
 
-import type { Card, Settings } from '../../shared/contract'
+import type { Card } from '../../shared/contract'
 import { isClosed } from '../../shared/state'
-import type { PrecedentStore, SettingsStore, Store } from '../cards/store'
-import type {
-  AgentHandleLike,
-  HostRuntime,
-  Log,
-  ModelSelection,
-  SessionControllerLike,
-} from '../host-api'
-import { resolveModel } from '../observer/model'
+import type { PrecedentStore, RecordStore, SettingsStore, Store } from '../cards/store'
+import type { HostRuntime, Log } from '../host-api'
 import { Waiter } from '../observer/waiter'
-import { attachToWorkspace, observerWorkspace } from '../observer/workspace'
 import { applyAdvice } from './apply'
-import { DECISION_PRESET_ID } from './defaults'
-import { decisionSessionId } from './ids'
+import { autoApplyAdvice } from './autoapply'
 import { buildDecisionInput } from './input'
 import { type AdviceDraft, parseAdvice } from './parse'
+import { addDecisionRecord, type DecisionRecordStatus } from './record'
+import { type DecisionAttempt, runDecisionAttempt } from './session'
 
 export interface DecisionRunResult {
   ok: boolean
+  /** 这次出了几张票拟。 */
   advised: number
+  /** 这次自动执行了几张（投递成功才算）。 */
+  applied: number
   attempts: number
   sessionId: string
   reason?: string
@@ -36,136 +34,25 @@ export interface DecisionOptions {
   settings: SettingsStore
   cards: Store
   precedents: PrecedentStore
+  records: RecordStore
   log?: Log
 }
 
-interface DecisionAttempt {
-  ok: boolean
-  attempt: number
-  sessionId: string
-  text: string
-  reason?: string
-}
-
-interface AttemptOptions {
-  ctx: HostRuntime
-  config: Settings
+/** 一次运行失败或空手而归之后要写的记录。 */
+interface RecordIntent {
+  cards: Card[]
+  last: DecisionAttempt | null
+  status: DecisionRecordStatus
+  startedAt: number
   userText: string
-  attempt: number
-  waiter: Waiter
-  log: Log
+  cardsCreated?: number
+  applied?: number
+  corrected?: number
+  error?: string
 }
 
 function messageOf(err: unknown): string {
   return (err as Error)?.message || String(err)
-}
-
-/** 设置里给了决策模型就用它，否则退回观察者那套默认模型。 */
-function resolveDecisionModel(ctx: HostRuntime, config: Settings): ModelSelection | null {
-  if (config.decisionProvider && config.decisionModel) {
-    return { provider: config.decisionProvider, model: config.decisionModel }
-  }
-  return resolveModel(ctx, config)
-}
-
-async function createDecisionAgent(
-  ctx: HostRuntime,
-  sessionId: string,
-  chosen: ModelSelection,
-): Promise<AgentHandleLike> {
-  const agents = ctx.agents
-  if (!agents) throw new Error('宿主缺少 agents 服务')
-  const agentOptions: Record<string, unknown> = { provider: chosen.provider, model: chosen.model }
-  if (chosen.reasoningEffort) agentOptions.reasoningEffort = chosen.reasoningEffort
-  return agents.create({
-    sessionId,
-    // 不挂 parentSession：挂上以后 sessionController 会拒绝直接投递
-    // （"owned by subagent routing"）。身份只靠下面那条 descriptor 事件表达。
-    meta: { cwd: observerWorkspace(), agentPreset: DECISION_PRESET_ID },
-    setup: (
-      _childCtx: unknown,
-      child: { session?: { append?: (type: string, data: unknown) => void } },
-    ) => {
-      try {
-        child.session?.append?.('subagent/descriptor', {
-          version: 3,
-          mode: 'one-shot',
-          provider: 'dsh-task-cards',
-          label: '任务卡决策代理人',
-        })
-      } catch {
-        /* 老宿主不认识这条事件 */
-      }
-    },
-    agentOptions,
-  })
-}
-
-/** 建会话时直接带上决策 preset；万一 factory 没认 meta，再用 select 补一次。 */
-async function selectDecisionPreset(ctx: HostRuntime, handle: AgentHandleLike): Promise<void> {
-  const presets = ctx.agentPresets
-  if (!presets || typeof presets.select !== 'function') return
-  const composed =
-    typeof presets.composedPreset === 'function'
-      ? presets.composedPreset(handle.agent.ctx)
-      : undefined
-  if (composed === undefined) await presets.select(handle.agent, DECISION_PRESET_ID)
-}
-
-async function runDecisionAttempt({
-  ctx,
-  config,
-  userText,
-  attempt,
-  waiter,
-  log,
-}: AttemptOptions): Promise<DecisionAttempt> {
-  const sessionId = decisionSessionId(attempt)
-  const expects = waiter.expect(sessionId, config.timeoutMs)
-  const controller = new AbortController()
-  let handle: AgentHandleLike | null = null
-  try {
-    const chosen = resolveDecisionModel(ctx, config)
-    if (!chosen) {
-      waiter.cancel(sessionId, '没有可用的模型')
-      return {
-        ok: false,
-        attempt,
-        sessionId,
-        text: '',
-        reason: '没有可用的模型：设置里没选，宿主也没有默认模型',
-      }
-    }
-    handle = await createDecisionAgent(ctx, sessionId, chosen)
-    await attachToWorkspace(ctx, sessionId, log)
-    await selectDecisionPreset(ctx, handle)
-    // prompt 的第二个参数是必需的 AbortSignal：不传会让宿主内部直接抛错。
-    const sessionController = ctx.sessionController as SessionControllerLike
-    await sessionController.prompt(
-      {
-        requestId: `card-decision-${Date.now().toString(36)}-${attempt}`,
-        sessionId,
-        mode: 'queue',
-        content: [{ type: 'text', text: userText }],
-      },
-      controller.signal,
-    )
-    const result = await expects
-    return { ok: result.ok, attempt, sessionId, text: result.text, reason: result.reason }
-  } catch (err) {
-    waiter.cancel(sessionId, '决策会话创建或投递失败')
-    return { ok: false, attempt, sessionId, text: '', reason: `决策会话失败：${messageOf(err)}` }
-  } finally {
-    try {
-      controller.abort()
-    } catch {
-      /* 已经结束 */
-    }
-    if (handle) {
-      // 结果已拿到；释放 agent，会话日志仍留在宿主里可追溯。
-      Promise.resolve(handle.dispose()).catch(() => {})
-    }
-  }
 }
 
 /**
@@ -178,14 +65,16 @@ export class Decision {
   readonly #settings: SettingsStore
   readonly #cards: Store
   readonly #precedents: PrecedentStore
+  readonly #records: RecordStore
   readonly #log: Log
   #queue: Promise<unknown> = Promise.resolve()
 
-  constructor({ getCtx, settings, cards, precedents, log }: DecisionOptions) {
+  constructor({ getCtx, settings, cards, precedents, records, log }: DecisionOptions) {
     this.#getCtx = getCtx
     this.#settings = settings
     this.#cards = cards
     this.#precedents = precedents
+    this.#records = records
     this.#log = log || (() => {})
   }
 
@@ -213,25 +102,30 @@ export class Decision {
   }
 
   async run(cardIds: string[], force = false): Promise<DecisionRunResult> {
+    const startedAt = Date.now()
     const config = this.#settings.get()
-    if (!config.decisionEnabled && !force) return skip('决策阶段已关闭')
-    const cards = cardIds
-      .map((id) => this.#cards.find(id))
-      .filter((card): card is Card => !!card && !isClosed(card.status))
-    if (!cards.length) return skip('没有需要决策的卡')
+    if (!config.decisionEnabled && !force) {
+      return await this.#stop(cardIds, 'empty', '决策阶段已关闭', startedAt)
+    }
+    const cards = this.#decidable(cardIds)
+    if (!cards.length) return await this.#stop(cardIds, 'empty', '没有需要决策的卡', startedAt)
     const ctx = this.#getCtx()
     if (!ctx?.agents || !ctx.sessionController) {
-      return await this.#failed(cards, '宿主缺少 agents / sessionController，决策未运行')
+      return await this.#failed(cards, '宿主缺少 agents / sessionController，决策未运行', 'error', {
+        last: null,
+        startedAt,
+        userText: '',
+      })
     }
-    const limit = config.decisionPrecedentLimit
     const userText = buildDecisionInput(
       cards,
-      this.#precedents.list(limit),
-      limit,
+      this.#precedents.list(config.decisionPrecedentLimit),
+      config.decisionPrecedentLimit,
       config.maxInputBytes,
     )
     const knownIds = new Set(cards.map((card) => card.id))
     let last: DecisionAttempt | null = null
+    let parseFailed = false
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       last = await runDecisionAttempt({
         ctx,
@@ -241,26 +135,49 @@ export class Decision {
         waiter: this.waiter,
         log: this.#log,
       })
-      const drafts = last.ok ? parseAdvice(last.text, knownIds) : null
-      if (last.ok && drafts) return await this.#applyAll(cards, drafts, last)
-      last = {
-        ...last,
-        ok: false,
-        reason: last.ok ? '输出不是可解析的票拟 JSON' : last.reason || '未知原因',
+      parseFailed = false
+      const drafts = last.kind === 'ok' ? parseAdvice(last.text, knownIds) : null
+      if (drafts) return await this.#applied(cards, drafts, last, userText, startedAt)
+      if (last.kind === 'ok') {
+        // 会话跑通了，是输出的形状不对：重试一次，最终按「不可解析」记。
+        parseFailed = true
+        last = { ...last, kind: 'session', reason: '输出不是可解析的票拟 JSON' }
       }
       this.#log(`第 ${attempt} 次失败：${last.reason}`)
     }
-    return await this.#failed(cards, (last && last.reason) || '未知原因')
+    const reason = (last && last.reason) || '未知原因'
+    return await this.#failed(cards, reason, parseFailed ? 'invalid' : 'error', {
+      last,
+      startedAt,
+      userText,
+    })
   }
 
-  async #applyAll(
+  /** 一张卡都没跑（开关关着 / 没有待决策的卡）：记一条空记录，不动任何卡。 */
+  async #stop(
+    cardIds: string[],
+    status: DecisionRecordStatus,
+    reason: string,
+    startedAt: number,
+  ): Promise<DecisionRunResult> {
+    const cards = this.#decidable(cardIds)
+    await this.#record({ cards, last: null, status, startedAt, userText: '', error: reason })
+    return skip(reason)
+  }
+
+  /** 跑完一轮：写回票拟、纠正车道、按边界自动执行，最后落记录。 */
+  async #applied(
     cards: Card[],
     drafts: AdviceDraft[],
     last: DecisionAttempt,
+    userText: string,
+    startedAt: number,
   ): Promise<DecisionRunResult> {
     const byId = new Map(cards.map((card) => [card.id, card]))
+    const allowed = this.#settings.get().decisionAutoApply
     let advised = 0
     let corrected = 0
+    let applied = 0
     for (const draft of drafts) {
       const card = byId.get(draft.cardId)
       if (!card) continue
@@ -268,26 +185,85 @@ export class Decision {
         const result = await applyAdvice(this.#cards, card, draft)
         advised += 1
         if (result.corrected) corrected += 1
+        const auto = await autoApplyAdvice(this.#autoDeps(allowed), result.card)
+        if (auto) applied += 1
       } catch (err) {
         this.#log(`写回失败：${draft.cardId} — ${messageOf(err)}`)
       }
     }
     this.#log(
-      `完成：${advised}/${cards.length} 张出票拟（纠正车道 ${corrected} 张），会话 ${last.sessionId}`,
+      `完成：${advised}/${cards.length} 张出票拟（纠正车道 ${corrected} 张，自动执行 ${applied} 张），会话 ${last.sessionId}`,
     )
-    return { ok: true, advised, attempts: last.attempt, sessionId: last.sessionId }
+    await this.#record({
+      cards,
+      last,
+      status: advised > 0 ? 'ok' : 'empty',
+      startedAt,
+      userText,
+      cardsCreated: advised,
+      applied,
+      corrected,
+    })
+    return { ok: true, advised, applied, attempts: last.attempt, sessionId: last.sessionId }
+  }
+
+  #autoDeps(allowed: boolean) {
+    return {
+      cards: this.#cards,
+      getCtx: this.#getCtx,
+      log: (line: string) => this.#log(`自动执行：${line}`),
+      allowed,
+    }
   }
 
   /** 失败只记日志与卡事件：卡仍然可用，人还能自己处理。 */
-  async #failed(cards: Card[], reason: string): Promise<DecisionRunResult> {
+  async #failed(
+    cards: Card[],
+    reason: string,
+    status: DecisionRecordStatus,
+    rest: { last: DecisionAttempt | null; startedAt: number; userText: string },
+  ): Promise<DecisionRunResult> {
     for (const card of cards) {
       await this.#cards.patch(card.id, {}, 'decision-failed').catch(() => {})
     }
     this.#log(`失败（${cards.length} 张卡）：${reason}`)
-    return { ...skip(reason) }
+    await this.#record({ ...rest, cards, status, error: reason })
+    return skip(reason)
+  }
+
+  /** 记录写失败不能影响决策本身：吞掉只记日志。 */
+  async #record(intent: RecordIntent): Promise<void> {
+    const { cards, last, userText } = intent
+    try {
+      await addDecisionRecord(this.#records, {
+        status: intent.status,
+        cards,
+        sessionId: last?.sessionId || '',
+        model: last?.model,
+        inputChars: userText.length,
+        outputChars: last?.text ? last.text.length : 0,
+        usage: last?.usage,
+        toolCalls: last?.toolCalls,
+        durationMs: Date.now() - intent.startedAt,
+        attempts: last?.attempt ?? 0,
+        cardsCreated: intent.cardsCreated ?? 0,
+        applied: intent.applied ?? 0,
+        corrected: intent.corrected ?? 0,
+        excerpt: last?.text ? last.text.slice(0, 400) : '',
+        error: intent.error,
+      })
+    } catch (err) {
+      this.#log(`执行记录写入失败：${messageOf(err)}`)
+    }
+  }
+
+  #decidable(cardIds: string[]): Card[] {
+    return cardIds
+      .map((id) => this.#cards.find(id))
+      .filter((card): card is Card => !!card && !isClosed(card.status))
   }
 }
 
 function skip(reason: string): DecisionRunResult {
-  return { ok: false, advised: 0, attempts: 0, sessionId: '', reason }
+  return { ok: false, advised: 0, applied: 0, attempts: 0, sessionId: '', reason }
 }

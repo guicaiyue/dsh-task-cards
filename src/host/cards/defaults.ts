@@ -10,7 +10,7 @@ export const DEFAULT_PROMPT = `你是任务卡的观察者：只读别人会话�
 只输出 JSON，不要解释，不要用 markdown 代码块。
 
 格式：
-{"cards":[{"title":"一句话，动词开头，不超过 40 字","detail":"一到两句关键信息","kind":"decision|info|auto","severity":"high|normal|low","action":{"type":"prompt","delayMs":600000,"input":"到点时替用户发回原会话的那句话"}}]}
+{"cards":[{"title":"一句话，动词开头，不超过 40 字","detail":"一到两句关键信息","kind":"decision|info|auto","severity":"high|normal|low","action":{"type":"prompt","delayMs":600000,"input":"到点时替用户发回原会话的那句话"},"reason":"为什么是这个 kind，一句话凭据"}]}
 
 kind 三选一：
 - decision：必须由人拍板，且影响大（删数据、花钱、对外发消息、改方向、不可逆操作）。不拍不能继续。
@@ -21,6 +21,7 @@ action.delayMs 是毫秒：立即用 0，10 分钟用 600000。action.input 是�
 
 规则：
 - 一条卡只装一件事。
+- reason 写分类凭据（例如「模型在等你确认是否开始重构」），不写「根据回复」「因为对话内容」这类空话；它会作为决策代理人的判断依据。
 - title 写人话，不要写"根据回复…"这类元话语。
 - 拿不准就不成卡；没有值得留下的事只输出 {"cards":[]}。
 - 观察者不评论模型能力，只记录这件事本身的状态与下一步。`
@@ -47,4 +48,5 @@ export const DEFAULT_SETTINGS: Settings = {
   decisionProvider: '',
   decisionModel: '',
   decisionPrecedentLimit: 30,
+  decisionAutoApply: true,
 }

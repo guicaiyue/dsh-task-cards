@@ -9,7 +9,9 @@ import type { Card } from '../../src/shared/contract'
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'dtc-runner-'))
 process.env.DSH_HOME = HOME
 
-const { PrecedentStore, SettingsStore, Store } = await import('../../src/host/cards/store')
+const { PrecedentStore, RecordStore, SettingsStore, Store } = await import(
+  '../../src/host/cards/store'
+)
 const { Decision } = await import('../../src/host/decision/runner')
 const { DECISION_PRESET_ID } = await import('../../src/host/decision/defaults')
 const { isDecisionSession } = await import('../../src/host/decision/ids')
@@ -17,6 +19,7 @@ const { isDecisionSession } = await import('../../src/host/decision/ids')
 type StoreClass = InstanceType<typeof Store>
 type SettingsClass = InstanceType<typeof SettingsStore>
 type PrecedentClass = InstanceType<typeof PrecedentStore>
+type RecordClass = InstanceType<typeof RecordStore>
 type DecisionClass = InstanceType<typeof Decision>
 
 interface FakeHost {
@@ -78,12 +81,14 @@ function fresh(): {
   cards: StoreClass
   settings: SettingsClass
   precedents: PrecedentClass
+  records: RecordClass
 } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dtc-runner-case-'))
   return {
     cards: new Store(path.join(dir, 'cards.json')),
     settings: new SettingsStore(path.join(dir, 'settings.json')),
     precedents: new PrecedentStore(path.join(dir, 'precedents.json')),
+    records: new RecordStore(path.join(dir, 'records.json')),
   }
 }
 
@@ -91,11 +96,13 @@ interface Rig {
   decision: DecisionClass
   cards: StoreClass
   settings: SettingsClass
+  precedents: PrecedentClass
+  records: RecordClass
   host: FakeHost
 }
 
 function rig(): Rig {
-  const { cards, settings, precedents } = fresh()
+  const { cards, settings, precedents, records } = fresh()
   let decision: DecisionClass | null = null
   const host = fakeHost(() => {
     if (!decision) throw new Error('decision 尚未创建')
@@ -106,9 +113,10 @@ function rig(): Rig {
     settings,
     cards,
     precedents,
+    records,
     log: () => {},
   })
-  return { decision, cards, settings, host }
+  return { decision, cards, settings, precedents, records, host }
 }
 
 async function seedDecisionCard(cards: StoreClass, title: string): Promise<Card> {
@@ -285,5 +293,185 @@ describe('决策会话', () => {
     expect(result.ok).toBe(false)
     expect(result.reason).toContain('没有需要决策的卡')
     expect(host.prompts).toHaveLength(0)
+  })
+
+  const ORIGIN = 's-origin'
+
+  function adviceJson(cardId: string, chosen: number, autoApply: boolean): string {
+    return JSON.stringify({
+      decisions: [
+        {
+          cardId,
+          lane: 'decision',
+          verdict: 'modify',
+          summary: '先跑通最小验证',
+          chosen,
+          autoApply,
+          options: [
+            { name: '先跑通', answer: '先跑通最小验证再谈重构', verdict: 'approve' },
+            { name: '直接重构', answer: '直接重构整个登录页', verdict: 'reject' },
+          ],
+          basis: '无同类判例',
+          confidence: 'normal',
+        },
+      ],
+    })
+  }
+
+  /** 让这次会话的回复可预期：决策会话回票拟，投递回原会话只记账。 */
+  function replyWith(decision: DecisionClass, host: FakeHost, replyText: string): void {
+    host.runtime.sessionController = {
+      async prompt(request) {
+        host.prompts.push({
+          sessionId: request.sessionId,
+          text: request.content.map((block) => block.text).join('\n'),
+        })
+        reply(decision, request.sessionId, replyText)
+        return {}
+      },
+    }
+  }
+
+  function seedWithOrigin(cards: StoreClass, title: string): Promise<Card> {
+    return cards.create(title, {
+      kind: 'decision',
+      detail: '现状能跑但结构乱',
+      origin: { sessionId: ORIGIN },
+    })
+  }
+
+  it('票拟 autoApply=true：自动推回原会话、卡变 done，且不落判例', async () => {
+    const { decision, cards, precedents, records, host } = rig()
+    const target = await seedWithOrigin(cards, '要不要把登录页重做')
+    replyWith(decision, host, adviceJson(target.id, 0, true))
+
+    const result = await decision.run([target.id])
+    expect(result.ok).toBe(true)
+    expect(result.applied).toBe(1)
+
+    const after = cards.find(target.id)
+    expect(after?.status).toBe('done')
+    expect(after?.answer).toBe('先跑通最小验证再谈重构')
+    expect(after?.answeredVia).toBe('card')
+    expect(after?.advice?.autoApply).toBe(true)
+    expect(after?.events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(['advised', 'advice-applied']),
+    )
+
+    // 推给了原会话，不是决策会话
+    const delivered = host.prompts.filter((item) => item.sessionId === ORIGIN)
+    expect(delivered.map((item) => item.text)).toEqual(['先跑通最小验证再谈重构'])
+
+    // 自动执行不落判例：判例只能由人的动作产生
+    expect(precedents.list()).toHaveLength(0)
+
+    expect(records.listByPhase('decision')[0]).toMatchObject({
+      status: 'ok',
+      cardsCreated: 1,
+      applied: 1,
+      corrected: 0,
+    })
+  })
+
+  it('票拟 autoApply=false：只写回 advice，不投递，卡不结束', async () => {
+    const { decision, cards, host } = rig()
+    const target = await seedWithOrigin(cards, '要不要加缓存')
+    replyWith(decision, host, adviceJson(target.id, 0, false))
+
+    const result = await decision.run([target.id])
+    expect(result.applied).toBe(0)
+    const after = cards.find(target.id)
+    expect(after?.status).toBe('open')
+    expect(after?.advice).not.toBeNull()
+    expect(after?.answer).toBeUndefined()
+    expect(host.prompts.filter((item) => item.sessionId === ORIGIN)).toHaveLength(0)
+  })
+
+  it('设置 decisionAutoApply=false：即使票拟 autoApply=true 也不执行', async () => {
+    const { decision, cards, settings, host } = rig()
+    await settings.set({ decisionAutoApply: false })
+    const target = await seedWithOrigin(cards, '要不要删旧表')
+    replyWith(decision, host, adviceJson(target.id, 1, true))
+
+    const result = await decision.run([target.id])
+    expect(result.applied).toBe(0)
+    const after = cards.find(target.id)
+    expect(after?.status).toBe('open')
+    expect(after?.advice?.chosen).toBe(1)
+    expect(host.prompts.filter((item) => item.sessionId === ORIGIN)).toHaveLength(0)
+  })
+
+  it('自动执行投递失败：只记事件与日志，票拟仍保留', async () => {
+    const { decision, cards, host } = rig()
+    const target = await seedWithOrigin(cards, '要不要换配色')
+    host.runtime.sessionController = {
+      async prompt(request) {
+        if (request.sessionId === ORIGIN) throw new Error('目标会话已经结束')
+        host.prompts.push({ sessionId: request.sessionId, text: '' })
+        reply(decision, request.sessionId, adviceJson(target.id, 0, true))
+        return {}
+      },
+    }
+
+    const result = await decision.run([target.id])
+    expect(result.ok).toBe(true)
+    expect(result.applied).toBe(0)
+    const after = cards.find(target.id)
+    expect(after?.advice).not.toBeNull()
+    expect(after?.advice?.verdict).toBe('modify')
+    expect(after?.events.map((event) => event.type)).toContain('advice-applied:failed')
+    // 自动执行失败不关卡：用户没表态，卡必须留在待决策车道，并写明失败原因。
+    expect(after?.status).toBe('open')
+    expect(after?.lastError).toContain('目标会话已经结束')
+  })
+
+  it('每次运行都落一条 phase=decision 的记录：空产出记 empty', async () => {
+    const { decision, cards, records, host } = rig()
+    const target = await seedWithOrigin(cards, '要不要发版')
+    replyWith(decision, host, '{"decisions":[]}')
+
+    await decision.run([target.id])
+    const [record] = records.listByPhase('decision')
+    expect(record).toMatchObject({
+      phase: 'decision',
+      status: 'empty',
+      originSessionId: ORIGIN,
+      attempts: 1,
+      cardsCreated: 0,
+      applied: 0,
+      corrected: 0,
+    })
+    expect(String(record?.observerSessionId).startsWith('card-dec-')).toBe(true)
+    expect(record?.model).toBe('p/m')
+    expect(record?.durationMs).toBeTypeOf('number')
+    expect(record?.inputChars).toBeGreaterThan(0)
+    expect(record?.excerpt).toBe('{"decisions":[]}')
+  })
+
+  it('两次都不可解析：记录 status=invalid 并带上原因', async () => {
+    const { decision, cards, records, host } = rig()
+    const target = await seedWithOrigin(cards, '要不要重构')
+    const replies = ['这不是 JSON', '{"foo":1}']
+    host.runtime.sessionController = {
+      async prompt(request) {
+        host.prompts.push({ sessionId: request.sessionId, text: '' })
+        reply(decision, request.sessionId, replies.shift() ?? '')
+        return {}
+      },
+    }
+
+    await decision.run([target.id])
+    const [record] = records.listByPhase('decision')
+    expect(record).toMatchObject({ status: 'invalid', attempts: 2, cardsCreated: 0 })
+    expect(record?.error).toContain('票拟 JSON')
+  })
+
+  it('listByPhase 只挑决策记录，观察者记录不进 /decisions', async () => {
+    const { records } = rig()
+    await records.add({ phase: 'observer', status: 'ok' })
+    await records.add({ phase: 'decision', status: 'ok' })
+    const rows = records.listByPhase('decision')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.phase).toBe('decision')
   })
 })

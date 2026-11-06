@@ -1,6 +1,6 @@
-// POST /action：完成 / 忽略 / 重开 / 立即执行 / 作答 / 采纳方案 / 返工标记 / 删除。
+// POST /action：完成 / 忽略 / 重开 / 立即执行 / 作答 / 采纳方案 / 批红 / 返工标记 / 删除。
 //
-// 人的决定在这里顺手落一条判例（作答 / 完成 / 忽略 / 采纳方案）。
+// 人的决定在这里顺手落一条判例（作答 / 完成 / 忽略 / 采纳方案 / 批红）。
 // 判例只由人的动作产生，代理人只读不写。
 
 import type { Card } from '../../shared/contract'
@@ -11,6 +11,7 @@ import { asString } from '../host-api'
 import type { HttpRequestLike, HttpResponseLike } from '../http'
 import { readJson, sendJson } from '../http'
 import { answerQuestion } from '../question/answer'
+import { deliverToOrigin } from '../question/deliver'
 import { answerPendingQuestion } from '../question/pending'
 import type { CardQuestion } from '../question/types'
 import type { RouteDeps } from './deps'
@@ -36,6 +37,8 @@ export function createActionHandler(deps: RouteDeps) {
     }
     if (name === 'answer') return answerCard(deps, card, asString(body.option || body.text), res)
     if (name === 'adopt') return adoptCard(deps, card, asString(body.option), res)
+    // 批红是唯一会把话推回原会话的卡片动作：批准了就应该让那轮对话继续跑。
+    if (name === 'approve') return approveCard(deps, card, asString(body.option), res)
     if (name === 'mark-reworked') return reworkCard(deps, card, asString(body.option), res)
     if (!isCardAction(name)) throw new StoreError('BAD_ACTION', '未知操作')
     const wasClosed = isClosed(card.status)
@@ -112,4 +115,58 @@ async function reworkCard(
   const result = await markReworked(deps.cards, deps.precedents, card, note)
   deps.log(`卡片动作：mark-reworked（判例 ${result.precedent.id}）`)
   return sendJson(res, 200, { ok: true, ...result, card: deps.cards.find(card.id) })
+}
+
+/**
+ * 批红时发回去的是哪句话：面板给的 → 推荐方案的 answer → 卡上已有的回答 → 兜底模板。
+ * 兜底模板让最坏情况（票拟没写 answer、卡也没答过）仍然能推进那轮对话。
+ */
+function approveText(card: Card, raw: string): string {
+  const given = raw.trim()
+  if (given) return given
+  const advice = card.advice
+  if (advice) {
+    const chosen = (advice.options[advice.chosen]?.answer || '').trim()
+    if (chosen) return chosen
+  }
+  const answered = asString(card.answer).trim()
+  if (answered) return answered
+  return `已批准：${card.title}。按这个方向继续。`
+}
+
+/**
+ * 决策卡批红：把批准的那句话推回原会话，然后结束这张卡。
+ * 推不回去（没有 origin.sessionId / 会话已死）也照样结束：卡不能卡死，
+ * 只在卡上留 approved:no-session / approved:failed 事件，交给面板说明。
+ */
+async function approveCard(
+  deps: RouteDeps,
+  card: Card,
+  raw: string,
+  res: HttpResponseLike,
+): Promise<unknown> {
+  const text = approveText(card, raw)
+  const wasClosed = isClosed(card.status)
+  const result = await deliverToOrigin({
+    cards: deps.cards,
+    getCtx: deps.runtime,
+    log: deps.log,
+    card,
+    text,
+    event: ACTION_EVENT.approve,
+  })
+  // 判例只由人的动作产生，且只在真正推出去之后落：没推进会话的批准不算他定过。
+  if (result.pushed && !wasClosed && result.card) {
+    await recordChoice(deps.precedents, result.card, text).catch((err: unknown) =>
+      deps.log(`判例写入失败：${messageOf(err)}`),
+    )
+  }
+  const how = result.pushed ? '已投递回原会话' : `未投递：${result.reason}`
+  deps.log(`卡片动作：approve → done（${how}）`)
+  return sendJson(res, 200, {
+    ok: true,
+    pushed: result.pushed,
+    ...(result.reason ? { reason: result.reason } : {}),
+    card: deps.cards.find(card.id),
+  })
 }
