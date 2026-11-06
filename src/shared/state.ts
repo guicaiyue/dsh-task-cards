@@ -57,6 +57,31 @@ export function groupCards<C extends { kind: CardKind; status: CardStatus }>(
   return groups
 }
 
+/** 「要我知晓」KPI 的时间窗：最近 24 小时。 */
+export const INFO_KPI_WINDOW_MS = 24 * 60 * 60 * 1000
+
+/**
+ * KPI「要我知晓」：最近 24 小时出现的知晓卡。
+ * 读没读不影响——通知看到即已读，若只算未读数，面板一打开就清零、几乎永远是 0。
+ */
+export function recentInfoCount<
+  C extends { kind: CardKind; status: CardStatus; createdAt: number },
+>(cards: readonly C[], now: number = Date.now()): number {
+  return cards.filter(
+    (card) =>
+      card.kind === 'info' &&
+      card.status !== 'dismissed' &&
+      now - (card.createdAt || 0) < INFO_KPI_WINDOW_MS,
+  ).length
+}
+
+/** 侧栏未读圆点：还没已读的知晓卡（观察者的通知看到即已读，手写备忘要自己勾掉）。 */
+export function unreadInfoCount<C extends { kind: CardKind; status: CardStatus }>(
+  cards: readonly C[],
+): number {
+  return cards.filter((card) => card.kind === 'info' && card.status === 'open').length
+}
+
 /** 排序用的最小形状：比 Card 少，测试与两端都能直接用。 */
 export interface CardOrder {
   kind: CardKind

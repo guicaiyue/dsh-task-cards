@@ -1,6 +1,6 @@
 // 面板顶部：标题 + 刷新；下面是四个 KPI。
 
-import { groupCards } from '../../shared/state'
+import { groupCards, recentInfoCount } from '../../shared/state'
 import type { Card, PanelTab, Translate } from '../types'
 
 const TABS: Array<{ id: PanelTab; label: string }> = [
@@ -39,9 +39,9 @@ export function KpiRow({ t, cards }: { t: Translate; cards: Card[] }) {
         <div className="dtc-kpi-label">{t('kpiDecision')}</div>
         <div className="dtc-kpi-value">{groups.decision.length}</div>
       </div>
-      <div className="dtc-kpi">
+      <div className="dtc-kpi" title={t('kpiInfoHint')}>
         <div className="dtc-kpi-label">{t('kpiInfo')}</div>
-        <div className="dtc-kpi-value">{groups.info.length}</div>
+        <div className="dtc-kpi-value">{recentInfoCount(cards)}</div>
       </div>
       <div className="dtc-kpi is-auto">
         <div className="dtc-kpi-label">{t('kpiAuto')}</div>

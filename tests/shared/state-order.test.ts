@@ -3,7 +3,13 @@
 
 import { describe, expect, it } from 'vitest'
 import type { CardKind, CardSeverity, CardStatus } from '../../src/shared/contract'
-import { cardLane, compareCards, sortCards } from '../../src/shared/state'
+import {
+  cardLane,
+  compareCards,
+  recentInfoCount,
+  sortCards,
+  unreadInfoCount,
+} from '../../src/shared/state'
 
 interface Row {
   id: string
@@ -64,5 +70,31 @@ describe('卡片列表排序', () => {
     expect(ids(cards)).toEqual(['a', 'b'])
     expect(ids(sorted)).toEqual(['b', 'a'])
     expect(compareCards(cards[0] as Row, cards[1] as Row)).toBeGreaterThan(0)
+  })
+})
+
+describe('KPI 与侧栏未读', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const now = 1_760_000_000_000
+
+  it('「要我知晓」只数最近 24 小时的知晓卡，读没读都算', () => {
+    const cards = [
+      row('刚生成', { createdAt: now - 1000 }),
+      row('已读但今天的', { createdAt: now - DAY + 1000, status: 'acknowledged' }),
+      row('两天前', { createdAt: now - 2 * DAY }),
+      row('决策卡', { kind: 'decision', createdAt: now }),
+      row('已忽略', { status: 'dismissed', createdAt: now }),
+    ]
+    expect(recentInfoCount(cards, now)).toBe(2)
+  })
+
+  it('侧栏圆点只数还没已读的知晓卡', () => {
+    const cards = [
+      row('未读'),
+      row('已读', { status: 'acknowledged' }),
+      row('决策卡', { kind: 'decision' }),
+      row('自动卡', { kind: 'auto', status: 'scheduled' }),
+    ]
+    expect(unreadInfoCount(cards)).toBe(1)
   })
 })

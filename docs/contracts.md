@@ -50,9 +50,11 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | 扫描器执行失败 | `open` + `lastError` | `auto-failed` |
 | `delete` | 移除 | — |
 
-`done` / `dismissed` / `acknowledged` 是「已结束」（`CLOSED_STATUSES`），面板的 KPI 与分组据此计算。
+`done` / `dismissed` / `acknowledged` 是「已结束」（`CLOSED_STATUSES`），面板的 KPI 与分组据此计算。「要我知晓」这一格例外：它数最近 24 小时的知晓卡，读掉不会清零，超过 24 小时才掉出去。
 
-**通知卡不走「处理」**：观察者写的 `info` 卡（`source=agent`）是通知，行上没有「知道了 / 忽略」两个按钮——两个动作在状态上完全等价，差别只是 `dismiss` 会写一条判例（已限制为只对决策卡生效）。面板渲染到它时自动发 `acknowledge`：看到即已读，KPI「要我知晓」就是未读数。人手写的 `info` 卡是备忘，保留「知道了」由人自己勾掉。
+**通知卡不走「处理」**：观察者写的 `info` 卡（`source=agent`）是通知，行上没有「知道了 / 忽略」两个按钮——两个动作在状态上完全等价，差别只是 `dismiss` 会写一条判例（已限制为只对决策卡生效）。面板渲染到它时自动发 `acknowledge`：看到即已读。人手写的 `info` 卡是备忘，保留「知道了」由人自己勾掉。
+
+**两个数字**：KPI「要我知晓」数**最近 24 小时创建的知晓卡**（`recentInfoCount`，读没读都算）——若按未读数算，面板一打开自动已读就清零、永远是 0。未读数（`unreadInfoCount`）只用在侧栏「任务卡」图标的圆点上，面板没打开时负责发现新通知。
 
 **面板顺序**（`src/shared/state.ts` 的 `sortCards`）：待我处理的最前——`decision` → `info` → `auto`，已结束沉底；同车道先看 `severity`（high → normal → low），再看 `createdAt`（新的在前）。会话树按组内最该处理的卡排组，组内同理，所以面板第一条永远是等我动的那条。
 

@@ -73,6 +73,8 @@ body[data-ds-dark-theme] .dtc-page {
 .dtc-chip { padding: 1px 7px; border-radius: 999px; border: 1px solid var(--dtc-border); }
 .dtc-chip.is-decision { color: var(--dtc-accent); border-color: var(--dtc-accent); }
 .dtc-chip.is-auto { color: var(--dtc-primary); border-color: var(--dtc-primary); }
+/* 建卡时就已经判定「用户看过」的免打扰卡：灰掉，不参与未读。 */
+.dtc-chip.is-silent { color: var(--dtc-muted, #64748B); border-style: dashed; }
 .dtc-actions { display: flex; align-items: flex-start; gap: 6px; flex-shrink: 0; }
 .dtc-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .dtc-option { padding: 6px 11px; border-radius: 6px; font-size: 12px; cursor: pointer;
@@ -214,6 +216,11 @@ body[data-ds-dark-theme] .dtc-page {
 .dtc-notice.is-warn { border-color: var(--dtc-accent); }
 .dtc-notice-text { overflow-wrap: anywhere; }
 .dtc-notice .dtc-btn { flex: 0 0 auto; }
+/* ── 侧栏未读圆点：在 .dtc-page 之外，用 DSH 侧栏底色给图标挖出一圈 ── */
+.dtc-unread-dot { fill: #DC2626; }
+.dtc-unread-dot-ring { fill: var(--dsw-specific-sidebar-fill, #F8FAFC); }
+body[data-ds-dark-theme] .dtc-unread-dot { fill: #F87171; }
+body[data-ds-dark-theme] .dtc-unread-dot-ring { fill: var(--dsw-specific-sidebar-fill, #0B1220); }
 `
 
 /** 注入样式；返回卸载函数。重复调用只会留一个 <style>。 */

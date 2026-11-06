@@ -241,6 +241,40 @@ describe('面板', () => {
     expect(kpis.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('「要我知晓」KPI 数最近 24 小时的知晓卡，不是未读数', async () => {
+    const now = Date.now()
+    stubApi({
+      cards: [
+        card({
+          id: 'c-today-1',
+          kind: 'info',
+          status: 'open',
+          title: '今天的通知',
+          createdAt: now,
+        }),
+        card({
+          id: 'c-today-2',
+          kind: 'info',
+          status: 'acknowledged',
+          title: '今天已读的通知',
+          createdAt: now - 3_600_000,
+        }),
+        card({
+          id: 'c-old',
+          kind: 'info',
+          status: 'acknowledged',
+          title: '两天前的通知',
+          createdAt: now - 48 * 3_600_000,
+        }),
+      ],
+    })
+    const { container } = render(<Panel t={translate} />)
+    await screen.findByText('今天的通知')
+    const kpis = container.querySelectorAll('.dtc-kpi')
+    expect(kpis[1]?.textContent).toContain(zh.kpiInfo as string)
+    expect(kpis[1]?.querySelector('.dtc-kpi-value')?.textContent).toBe('2')
+  })
+
   it('没有卡时显示空态文案', async () => {
     stubApi({ cards: [] })
     render(<Panel t={translate} />)

@@ -10,6 +10,8 @@ export const zh: Record<string, string> = {
   tabDecision: '决策',
   kpiDecision: '要我决策',
   kpiInfo: '要我知晓',
+  kpiInfoHint: '最近 24 小时的知晓卡（读没读都算）',
+  silentChip: '已看过，免打扰',
   kpiAuto: '自动处理中',
   kpiClosed: '已结束',
   groupDecision: '需要我决策',

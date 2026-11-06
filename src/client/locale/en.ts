@@ -10,6 +10,8 @@ export const en: Record<string, string> = {
   tabDecision: 'Decision',
   kpiDecision: 'To decide',
   kpiInfo: 'To know',
+  kpiInfoHint: 'Info cards from the last 24 hours (read or not)',
+  silentChip: 'seen in the chat',
   kpiAuto: 'Automating',
   kpiClosed: 'Closed',
   groupDecision: 'Needs my decision',
