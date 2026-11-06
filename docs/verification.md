@@ -8,7 +8,7 @@
 pnpm verify
 ```
 
-全绿即：lint / 类型 / 70 个测试 / 构建 / ABI 形状与体积 / 代码预算。
+全绿即：lint / 类型 / 125 个测试 / 构建 / ABI 形状与体积 / 代码预算。
 
 ## 1. 宿主活着
 
@@ -32,7 +32,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 | 提示词页 | 显示默认提示词；改一句 → 保存 → 再刷新仍在 |
 | 深色主题 | `body[data-ds-dark-theme]` 下面板配色跟着变 |
 | 客户端热重载 | 改 `src/client/**` 并 `pnpm dev`，浏览器不刷新也会出现新 UI（宿主 500 ms 轮询 bundle） |
-| 宿主热重载 | 改 `src/host/**` 并 `pnpm dev`，**1–2 s 后**接口行为即变（不用重启 dsh）；用一次可观察的改动验证（如错误码/文案） |
+| 宿主热重载 | 改 `src/host/**` 并 `pnpm dev`，**1–2 s 后**接口行为即变（不用重启 dsh）；用一次可观察的改动验证（如错误码/文案）。**但 chokidar 监听会静默死掉**：新端点一直是 404 而客户端已是新版，就是它；`systemctl restart dsh.service`（`NODE_ENV=production` 的部署里别把热重载当默认前提） |
 
 ## 3. 观察者（可选，会产生真实模型调用）
 
@@ -41,7 +41,21 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 3. 卡片「查看详情」→ 时间线应显示那一轮的用户输入与模型输出。
 4. `GET /dsh-task-cards/api/inspect?ids=<observerSessionId>`（或面板记录的会话 id）能查到请求头里的工具清单——观察者会话应为空或极少。
 
-## 4. 出问题先看哪
+## 4. 决策代理人（会产生真实模型调用，约 20–30 s）
+
+| 检查 | 期望 |
+| :-- | :-- |
+| 决策卡没有票拟时 | 行内显示「待出票拟」+「重新出票拟」；点它 → 卡片行 20 s 内出现结论 chip |
+| 详情弹窗 | 琥珀色「票拟」块：结论 chip、把握、出票时间、摘要、2–3 个方案（名称 / 成本 / 长期收益 / 最坏情况 + 采纳）、依据、判例编号 |
+| 提示词页 | 「决策代理人」区：开关、模型、提示词（placeholder 说明留空用默认画像）、判例库（空态 / reworked 标红） |
+| 票拟合法性 | `basis` 不含编造的判例编号；无判例时写「无同类判例」且把握不是 high；试错期场景的 `gain` 应写「0 步」而不是「更清晰」 |
+| 采纳（有副作用，别在真实决策卡上试） | 卡变 `done`、`answer` 落卡、判例多一条；只在不重要的卡上验 |
+| 采纳参数错误 | `option: "9"` → 400 `BAD_OPTION`，卡状态不变（这一条可以随便测） |
+| 返工标记 | 点「这个决定后来返工了」→ 判例 `outcome=reworked`，**下一次决策输入里不再出现这条** |
+
+宿主侧日志关键字：`decision: 完成：N/M 张出票拟（纠正车道 K 张）`，失败是 `decision: 失败（N 张卡）：<原因>`。
+
+## 5. 出问题先看哪
 
 | 现象 | 先查 |
 | :-- | :-- |
@@ -50,3 +64,16 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 | 侧栏没有入口 | `lib/client.js` 是否 rebuild（`ls -l lib/`）；宿主 HMR 日志 |
 | 观察者不建卡 | `records.json` 最近一条的 `status` / `error`；`settings.enabled` 与 `minReplyChars` |
 | 卡不落盘 | `$DSH_HOME/dsh-task-cards/cards.json` 是否存在、`.bad-*` 文件、面板顶部 warning |
+| 决策卡一直「待出票拟」 | `journalctl -u dsh | grep decision`：没日志 = 决策阶段没被调用（看 `decisionEnabled`）；有「失败」= 模型/预设/超时问题 |
+| 票拟字段缺 | `cards.json` 里该卡的 `advice` 对象；`options` 为空说明模型没给名字（解析会丢掉无名方案） |
+
+## 6. 在容器/远程浏览器里验收（bsk、agent-browser）
+
+bsk 驱动的 Chromium 不在宿主命名空间，它的 `127.0.0.1` 不是 dsh：
+
+1. 走 LAN 桥地址 `http://192.168.192.1:13080`；首次需要 token 换 cookie：
+   `TOKEN=$(journalctl -u dsh -n 200 | grep -o 'token=[A-Za-z0-9_-]*' | tail -1 | cut -d= -f2)`
+   `curl -s -c /tmp/dsh.jar "http://192.168.192.1:13080/?token=$TOKEN"`
+2. 之后用 `curl -b /tmp/dsh.jar` 直接打 API（`/cards`、`/decisions`、`/action`）。
+3. **重启 dsh 后 token 会换**：取 token 的 journal 时间窗要落在重启之后，否则拿到空串 → 全部 401。
+4. 页面里的 `.dtc-*` 元素点击有时被扩展浮层挡住；用 `evaluate` 里 `element.click()` 更稳。
