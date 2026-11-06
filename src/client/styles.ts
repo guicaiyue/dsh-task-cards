@@ -141,9 +141,13 @@ body[data-ds-dark-theme] .dtc-page {
 .dtc-chip.is-modify { color: var(--dtc-accent); border-color: var(--dtc-accent); }
 .dtc-chip.is-wait { color: var(--dtc-primary); border-color: var(--dtc-primary); }
 .dtc-chip.is-pending { color: var(--dtc-faint); border-style: dashed; }
-.dtc-advice-line { margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; }
-.dtc-advice-line-summary { color: var(--dtc-text); max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dtc-advice-line-confidence { color: var(--dtc-muted); }
+/* 单行：结论 chip + 把握固定宽度，摘要吃掉剩余宽度并省略（窄面板里也别折成三行）。 */
+.dtc-advice-line { margin-top: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
+  min-width: 0; font-size: 11px; line-height: 18px; }
+.dtc-advice-line-summary { flex: 1 1 auto; min-width: 0; color: var(--dtc-text); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.dtc-advice-line-confidence { flex: 0 0 auto; color: var(--dtc-muted); white-space: nowrap; }
+.dtc-advice-line .dtc-chip { flex: 0 0 auto; white-space: nowrap; }
 /* ── 票拟：详情弹窗区块 ─────────────────────────────────── */
 .dtc-advice { margin: 0; padding: 12px 14px; border: 1px solid var(--dtc-accent); border-radius: 10px;
   background: var(--dtc-surface); display: flex; flex-direction: column; gap: 10px; }
