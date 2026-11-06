@@ -1,24 +1,29 @@
 // 提问 → 卡片 / 聊天回答 → 卡片 回写。两边都能答，谁先生效。
 
+import type { Card } from '../../shared/contract'
 import type { Store } from '../cards/store'
 import type { HostRuntime, Log, SessionQueryLike, UserQuestionRequest } from '../host-api'
 import { asRecord, asString } from '../host-api'
 import { messageText } from '../observer/payload'
 import type { CardQuestion } from './types'
 
-/** 聊天里答完提问后，把选择写回卡片（两边都能答，谁先谁生效）。 */
+/**
+ * 聊天里答完提问后，把选择写回卡片（两边都能答，谁先谁生效）。
+ * 返回被回写的卡：调用方据此落判例（聊天里做的决定同样算判例）。
+ */
 export async function recordChatAnswer(
   cards: Store,
   request: UserQuestionRequest,
   answer: unknown,
-): Promise<void> {
+): Promise<Card[]> {
+  const patched: Card[] = []
   try {
     const items = request?.questions || []
     const ids = new Set(items.map((item) => String(asRecord(item).id ?? '')))
     const answers = Array.isArray(asRecord(answer).answers)
       ? (asRecord(answer).answers as unknown[])
       : []
-    if (!ids.size || !answers.length) return
+    if (!ids.size || !answers.length) return patched
     const text = answers
       .map((item) => {
         const selected = asRecord(item).selected
@@ -31,15 +36,18 @@ export async function recordChatAnswer(
       const cardItems = Array.isArray(question.items) ? question.items : []
       if (card.status === 'done' || !cardItems.length) continue
       if (!cardItems.every((item) => ids.has(item.id))) continue
-      await cards.patch(
-        card.id,
-        { status: 'done', answer: text, answeredAt: Date.now(), answeredVia: 'chat' },
-        'answered',
+      patched.push(
+        await cards.patch(
+          card.id,
+          { status: 'done', answer: text, answeredAt: Date.now(), answeredVia: 'chat' },
+          'answered',
+        ),
       )
     }
   } catch {
     /* 回写失败不影响回答 */
   }
+  return patched
 }
 
 /** 从会话日志里找最近一次 ask_user_question 的 callId。 */
