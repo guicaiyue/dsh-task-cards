@@ -59,6 +59,8 @@ export const CardOriginSchema = z.object({
   sessionId: z.string().optional(),
   turn: z.number().optional(),
   observerSessionId: z.string().optional(),
+  /** 观察者为什么判成这个 kind（一句话，给决策代理人当依据）。 */
+  reason: z.string().default(''),
 })
 export type CardOrigin = z.infer<typeof CardOriginSchema>
 
@@ -95,6 +97,10 @@ export const AdviceSchema = z.object({
   confidence: z.enum(CARD_SEVERITIES).default('normal'),
   /** verdict=wait 时的一个追问，用来补上缺的那条信息。 */
   question: z.string().default(''),
+  /** 它推荐哪个方案（options 的 0-based 序号）。 */
+  chosen: z.number().int().nonnegative().default(0),
+  /** 这个推荐是否可逆且便宜（撤回不需要用户本人动手）——为真才允许系统自动执行。 */
+  autoApply: z.boolean().default(false),
   /** 它判定的车道；与卡的 kind 不同时说明原分类被纠正。 */
   lane: z.enum(CARD_KINDS).default('decision'),
   /** 车道纠正是否已自动落盘（只允许向 info 方向纠正）。 */
@@ -158,6 +164,8 @@ export const CardDraftSchema = z.object({
   kind: z.enum(CARD_KINDS).default('info'),
   severity: z.enum(CARD_SEVERITIES).default('normal'),
   action: CardActionSchema.nullable().default(null),
+  /** 分类凭据：一句话说明为什么是这个 kind。 */
+  reason: z.string().default(''),
 })
 export type CardDraft = z.infer<typeof CardDraftSchema>
 
@@ -179,6 +187,8 @@ export const SettingsSchema = z.object({
   decisionModel: z.string().default(''),
   /** 一次票拟最多带几条判例进输入。 */
   decisionPrecedentLimit: z.number().int().nonnegative().default(30),
+  /** 允许系统直接执行 autoApply=true 的票拟（不等人批红）。 */
+  decisionAutoApply: z.boolean().default(true),
 })
 export type Settings = z.infer<typeof SettingsSchema>
 
@@ -195,10 +205,12 @@ export const PolicySchema = z.object({
 })
 export type Policy = z.infer<typeof PolicySchema>
 
-/** 观察者调用记录：面板「记录」页签已删除，但记录仍写盘，便于事后排查。 */
+/** 一次观察者 / 决策会话的调用记录：谁跑的、跑了多久、出了什么、有没有动手。 */
 export const RecordSchema = z.object({
   id: z.string(),
   at: z.number(),
+  /** 哪一段：观察者写卡，还是决策代理人出票拟。 */
+  phase: z.enum(['observer', 'decision']).default('observer'),
   status: z.enum(['ok', 'empty', 'invalid', 'error']),
   originSessionId: z.string().optional(),
   turn: z.number().optional(),
@@ -216,5 +228,9 @@ export const RecordSchema = z.object({
   error: z.string().optional(),
   cardsCreated: z.number().optional(),
   cardIds: z.array(z.string()).optional(),
+  /** 决策阶段：这次自动执行了几张（不等批红就动手的）。 */
+  applied: z.number().optional(),
+  /** 决策阶段：被判成 info 而降车道的张数。 */
+  corrected: z.number().optional(),
 })
 export type ObserverRecord = z.infer<typeof RecordSchema>

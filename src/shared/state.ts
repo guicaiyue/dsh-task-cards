@@ -16,6 +16,8 @@ export const ACTION_RESULT: Record<string, CardStatus> = {
   dismiss: 'dismissed',
   reopen: 'open',
   answer: 'done',
+  /** 决策卡批红：把结论推回原会话，卡随之结束。 */
+  approve: 'done',
 }
 
 export type CardActionName = keyof typeof ACTION_RESULT
@@ -31,6 +33,7 @@ export const ACTION_EVENT: Record<CardActionName, string> = {
   dismiss: 'dismissed',
   reopen: 'reopened',
   answer: 'answered',
+  approve: 'approved',
 }
 
 /** 面板分组：要我决策 / 要我知晓 / 自动处理中 / 已结束。 */
