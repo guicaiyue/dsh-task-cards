@@ -1,22 +1,42 @@
-// 提示词页：观察者设置 + 决策代理人设置，共用底部一个保存按钮。
+// 设置视图：观察者页与决策页共用一份表单与一个保存按钮，页签切换不丢未保存的改动。
 
 import { useEffect, useState } from 'react'
 
-import type { ModelCatalogView, Precedent, Settings, Translate } from '../types'
+import type {
+  ModelCatalogView,
+  ObserverRecord,
+  PanelTab,
+  Precedent,
+  Settings,
+  Translate,
+} from '../types'
 import { DecisionSettings } from './DecisionSettings'
 import { ModelPicker } from './ModelPicker'
 import { NumberFields } from './NumberFields'
 
+type SettingsTabId = Exclude<PanelTab, 'cards'>
+
 interface Props {
   t: Translate
+  tab: SettingsTabId
   settings: Settings | null
   models: ModelCatalogView | null
   precedents: Precedent[]
+  records: ObserverRecord[]
   busy: boolean
   onSave: (next: Settings) => Promise<void>
 }
 
-export function SettingsTab({ t, settings, models, precedents, busy, onSave }: Props) {
+export function SettingsTab({
+  t,
+  tab,
+  settings,
+  models,
+  precedents,
+  records,
+  busy,
+  onSave,
+}: Props) {
   const [form, setForm] = useState<Settings | null>(settings)
   const [saved, setSaved] = useState(false)
 
@@ -33,15 +53,18 @@ export function SettingsTab({ t, settings, models, precedents, busy, onSave }: P
 
   return (
     <>
-      <div className="dtc-hint">{t('settingsHint')}</div>
-      <ObserverFields t={t} form={form} models={models} onPatch={patch} />
-      <DecisionSettings
-        t={t}
-        value={form}
-        models={models}
-        precedents={precedents}
-        onChange={patch}
-      />
+      {tab === 'observer' ? (
+        <ObserverFields t={t} form={form} models={models} onPatch={patch} />
+      ) : (
+        <DecisionSettings
+          t={t}
+          value={form}
+          models={models}
+          precedents={precedents}
+          records={records}
+          onChange={patch}
+        />
+      )}
       <SaveRow
         t={t}
         busy={busy}
@@ -64,7 +87,11 @@ interface ObserverProps {
 
 function ObserverFields({ t, form, models, onPatch }: ObserverProps) {
   return (
-    <>
+    <div className="dtc-section">
+      <div className="dtc-section-head">
+        <span className="dtc-section-title">{t('observerSection')}</span>
+      </div>
+      <div className="dtc-hint">{t('settingsHint')}</div>
       <label className="dtc-row" style={{ cursor: 'pointer', fontSize: '12px' }}>
         <input
           type="checkbox"
@@ -89,7 +116,7 @@ function ObserverFields({ t, form, models, onPatch }: ObserverProps) {
         value={form.systemPrompt || ''}
         onChange={(event) => onPatch({ systemPrompt: event.target.value })}
       />
-    </>
+    </div>
   )
 }
 

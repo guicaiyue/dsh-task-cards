@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { isClosed } from '../../shared/state'
+import { isAdviceApplied } from '../advice'
 import { timeLabel } from '../time'
 import type { Card, CardActionName, DetailState, Precedent, Translate, Turn } from '../types'
 import { AdviceBlock } from './AdviceBlock'
@@ -117,6 +118,7 @@ function ModalBody({
           precedents={precedents}
           busy={busy}
           closed={isClosed(card.status)}
+          autoApplied={isAdviceApplied(card)}
           onAdopt={(index) => onAdopt(card, index)}
           onReworked={(note) => onReworked(card, note)}
         />

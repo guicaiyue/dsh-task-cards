@@ -22,7 +22,7 @@ function PrimaryAction({ t, card, busy, onAction }: Props) {
         type="button"
         className="dtc-btn is-primary"
         disabled={busy}
-        onClick={() => onAction(card, 'complete')}
+        onClick={() => onAction(card, 'approve')}
       >
         {t('approve')}
       </button>

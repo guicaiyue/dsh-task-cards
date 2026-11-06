@@ -4,8 +4,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { actOnCard, adopt, createCard, fetchCards, markReworked } from '../api'
-import type { ActionResult, Card, CardActionName } from '../types'
+import { type ActionReply, actOnCard, adopt, createCard, fetchCards, markReworked } from '../api'
+import type { ActionOutcome, Card, CardActionName } from '../types'
 
 export interface CardsState {
   cards: Card[]
@@ -15,7 +15,7 @@ export interface CardsState {
   setError: (message: string) => void
   loadCards: (soft?: boolean) => Promise<void>
   add: (title: string) => Promise<boolean>
-  act: (card: Card, action: CardActionName, option?: string) => Promise<ActionResult>
+  act: (card: Card, action: CardActionName, option?: string) => Promise<ActionOutcome>
 }
 
 interface ActionContext {
@@ -28,14 +28,14 @@ interface ActionContext {
 }
 
 /** 票拟的两个动作各有专用封装（采纳带 0 起序号，返工原因走 option）。 */
-function requestAction(card: Card, action: CardActionName, option?: string) {
+function requestAction(card: Card, action: CardActionName, option?: string): Promise<ActionReply> {
   if (action === 'adopt') return adopt(card.id, Number(option ?? '0'))
   if (action === 'mark-reworked') return markReworked(card.id, option)
   return actOnCard(card.id, action, option)
 }
 
 /** 动作请求 + 本地状态更新：删除直接摘掉，其它用宿主回的卡替换。 */
-async function performCardAction(context: ActionContext): Promise<ActionResult> {
+async function performCardAction(context: ActionContext): Promise<ActionOutcome> {
   const { card, action, option, setCards, setError, reload } = context
   setError('')
   try {
@@ -44,7 +44,7 @@ async function performCardAction(context: ActionContext): Promise<ActionResult> 
     else if (body.card)
       setCards((prev) => prev.map((item) => (item.id === card.id ? (body.card as Card) : item)))
     else await reload(true)
-    return { action, card: body.card }
+    return { action, card: body.card, pushed: body.pushed, reason: body.reason }
   } catch (err) {
     setError((err as Error).message || String(err))
     return undefined
@@ -104,7 +104,7 @@ export function useCards(active: boolean): CardsState {
   const add = useCallback((title: string) => createOne(title, setCards, setError), [])
 
   const act = useCallback(
-    (card: Card, action: CardActionName, option?: string): Promise<ActionResult> =>
+    (card: Card, action: CardActionName, option?: string): Promise<ActionOutcome> =>
       performCardAction({ card, action, option, setCards, setError, reload: loadCards }),
     [loadCards],
   )

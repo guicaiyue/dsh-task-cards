@@ -197,6 +197,23 @@ body[data-ds-dark-theme] .dtc-page {
 .dtc-precedent-note { color: var(--dtc-danger); }
 .dtc-divider { height: 1px; background: var(--dtc-line); margin: 6px 0 2px; }
 .dtc-textarea.is-short { min-height: 120px; }
+/* ── 票拟标记：推荐 / 系统可自动执行 ─────────────────────── */
+.dtc-chip.is-recommend { color: var(--dtc-primary); border-color: var(--dtc-primary); }
+.dtc-advice-option.is-chosen { border-color: var(--dtc-accent); }
+.dtc-origin-reason { margin-top: 6px; font-size: 11px; line-height: 1.55; color: var(--dtc-faint); }
+/* ── 决策执行记录 ──────────────────────────────────────── */
+.dtc-records { display: flex; flex-direction: column; gap: 6px; }
+.dtc-record-counts { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--dtc-muted); }
+.dtc-pre.is-error { color: var(--dtc-danger); }
+/* ── 批准反馈：固定在页面上方，压在详情弹窗之上 ───────────── */
+.dtc-notice { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 90;
+  display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 40px));
+  padding: 10px 14px; border-radius: 10px; font-size: 12.5px; line-height: 1.5;
+  background: var(--dtc-surface); color: var(--dtc-ink); border: 1px solid var(--dtc-success);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .25); }
+.dtc-notice.is-warn { border-color: var(--dtc-accent); }
+.dtc-notice-text { overflow-wrap: anywhere; }
+.dtc-notice .dtc-btn { flex: 0 0 auto; }
 `
 
 /** 注入样式；返回卸载函数。重复调用只会留一个 <style>。 */

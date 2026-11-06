@@ -4,17 +4,19 @@
 import { useCallback } from 'react'
 
 import { redecide } from '../api'
-import type { ActionResult, Card, CardActionName, DetailApi } from '../types'
+import type { ActionNotice, ActionOutcome, Card, CardActionName, DetailApi } from '../types'
 
 interface Options {
   /** 提交当前输入框内容；返回 true 表示已创建，面板据此清空草稿。 */
   submit: () => Promise<boolean>
-  act: (card: Card, action: CardActionName, option?: string) => Promise<ActionResult>
+  act: (card: Card, action: CardActionName, option?: string) => Promise<ActionOutcome>
   refresh: () => void
   detail: Pick<DetailApi, 'replaceCard' | 'closeDetail'>
   run: <T>(job: () => Promise<T>) => Promise<T | undefined>
   /** 独立的请求（重出票拟）失败时，把原因写进面板错误条。 */
   reportError: (message: string) => void
+  /** 批准的结果要显式告诉用户：推回原会话了，还是只结束了卡。 */
+  notify: (notice: ActionNotice | null) => void
 }
 
 export interface PanelActions {
@@ -41,6 +43,7 @@ export function usePanelActions({
   detail,
   run,
   reportError,
+  notify,
 }: Options): PanelActions {
   const onAdd = useCallback(() => {
     run(async () => {
@@ -50,13 +53,17 @@ export function usePanelActions({
 
   const onAction = useCallback(
     async (card: Card, action: CardActionName, option?: string) => {
+      notify(null)
       await run(async () => {
         const result = await act(card, action, option)
         if (action === 'delete') detail.closeDetail()
         else if (result?.card) detail.replaceCard(result.card)
+        if (action === 'approve' && result) {
+          notify({ pushed: result.pushed !== false, reason: result.reason || '' })
+        }
       })
     },
-    [act, detail, run],
+    [act, detail, run, notify],
   )
 
   const onAnswer = useCallback(

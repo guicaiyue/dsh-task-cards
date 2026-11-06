@@ -1,7 +1,7 @@
 // 面板后端调用：所有请求经宿主路由，错误统一成一句人话。
 
 import { API } from './constants'
-import type { Card, ModelCatalogView, Precedent, Settings, Turn } from './types'
+import type { Card, ModelCatalogView, ObserverRecord, Precedent, Settings, Turn } from './types'
 
 interface Envelope {
   ok?: boolean
@@ -44,17 +44,23 @@ export async function createCard(title: string): Promise<Card | null> {
   return body.card || null
 }
 
-export async function actOnCard(
-  id: string,
-  action: string,
-  option?: string,
-): Promise<{ card: Card | null }> {
-  const body = await call<{ card: Card | null }>(`${API}/action`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id, action, ...(option ? { option } : {}) }),
-  })
-  return { card: body.card || null }
+/** 卡片动作的宿主回包：approve 会额外说明有没有把话推回原会话。 */
+export interface ActionReply {
+  card: Card | null
+  pushed?: boolean
+  reason?: string
+}
+
+export async function actOnCard(id: string, action: string, option?: string): Promise<ActionReply> {
+  const body = await call<{ card: Card | null; pushed?: boolean; reason?: string }>(
+    `${API}/action`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, action, ...(option ? { option } : {}) }),
+    },
+  )
+  return { card: body.card || null, pushed: body.pushed, reason: body.reason }
 }
 
 export async function fetchSettings(): Promise<Settings> {
@@ -62,10 +68,15 @@ export async function fetchSettings(): Promise<Settings> {
   return body.settings
 }
 
-/** 判例库：用户过去同类决定，返工过的（outcome=reworked）不再当准绳。 */
-export async function fetchDecisions(): Promise<{ precedents: Precedent[] }> {
-  const body = await call<{ precedents?: Precedent[] }>(`${API}/decisions`)
-  return { precedents: body.precedents || [] }
+/** 判例库 + 决策执行记录：用户过去同类决定，返工过的（outcome=reworked）不再当准绳。 */
+export async function fetchDecisions(): Promise<{
+  precedents: Precedent[]
+  records: ObserverRecord[]
+}> {
+  const body = await call<{ precedents?: Precedent[]; records?: ObserverRecord[] }>(
+    `${API}/decisions`,
+  )
+  return { precedents: body.precedents || [], records: body.records || [] }
 }
 
 /** 让决策代理人给这张卡重出一张票拟；结果异步写回卡上，前端刷新就能看到。 */

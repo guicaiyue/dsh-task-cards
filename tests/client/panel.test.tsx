@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Panel } from '../../src/client/components/Panel'
 import { DICT } from '../../src/client/locale'
-import type { Advice, Card, Precedent, Settings } from '../../src/client/types'
+import type { Advice, Card, ObserverRecord, Precedent, Settings } from '../../src/client/types'
 
 const zh = DICT.zh as Record<string, string>
 
@@ -53,9 +53,10 @@ const SETTINGS: Settings = {
   decisionProvider: '',
   decisionModel: '',
   decisionPrecedentLimit: 30,
+  decisionAutoApply: true,
 }
 
-/** 一张完整的票拟：两个方案、一条被引用的判例。 */
+/** 一张完整的票拟：两个方案、一条被引用的判例，推荐第一个且可自动执行。 */
 const ADVICE: Advice = {
   verdict: 'modify',
   summary: '先跑通最小验证',
@@ -81,6 +82,8 @@ const ADVICE: Advice = {
   precedentIds: ['P-002'],
   confidence: 'high',
   question: '这次改动能不能撤回？',
+  chosen: 0,
+  autoApply: true,
   lane: 'decision',
   applied: false,
   at: Date.now(),
@@ -111,18 +114,59 @@ const PRECEDENTS: Precedent[] = [
   },
 ]
 
+/** 决策代理人的执行记录：一条成功、一条失败，外加一条观察者记录（不该出现在决策页）。 */
+const RECORDS: ObserverRecord[] = [
+  {
+    id: 'r-2',
+    at: Date.now() - 60_000,
+    phase: 'decision',
+    status: 'ok',
+    model: 'deepseek-chat',
+    durationMs: 2400,
+    cardsCreated: 3,
+    applied: 1,
+    corrected: 2,
+  },
+  {
+    id: 'r-1',
+    at: Date.now() - 3_600_000,
+    phase: 'decision',
+    status: 'error',
+    model: 'deepseek-chat',
+    durationMs: 500,
+    error: '429 rate limited',
+  },
+  {
+    id: 'r-0',
+    at: Date.now() - 7_200_000,
+    phase: 'observer',
+    status: 'ok',
+    cardsCreated: 9,
+  },
+]
+
 interface Calls {
   method: string
   url: string
   body: unknown
 }
 
+interface StubOptions {
+  cards?: Card[]
+  settings?: Settings
+  precedents?: Precedent[]
+  records?: ObserverRecord[]
+  /** /action 的额外回包字段：approve 的 pushed/reason。 */
+  action?: { pushed?: boolean; reason?: string }
+}
+
 /** 一个够用的假后端：只认面板会打的几个端点。 */
-function stubApi(options: { cards?: Card[]; settings?: Settings; precedents?: Precedent[] } = {}) {
+function stubApi(options: StubOptions = {}) {
   const calls: Calls[] = []
   const cards = options.cards ?? []
   const settings = options.settings ?? SETTINGS
   const precedents = options.precedents ?? PRECEDENTS
+  const records = options.records ?? []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const method = (init?.method || 'GET').toUpperCase()
@@ -145,14 +189,17 @@ function stubApi(options: { cards?: Card[]; settings?: Settings; precedents?: Pr
       const id = String(body?.id ?? '')
       const action = String(body?.action ?? '')
       const status =
-        action === 'complete' || action === 'adopt'
+        action === 'complete' || action === 'adopt' || action === 'approve'
           ? 'done'
           : action === 'acknowledge'
             ? 'acknowledged'
-            : 'open'
-      return json({ ok: true, card: card({ id, status }) })
+            : action === 'dismiss'
+              ? 'dismissed'
+              : 'open'
+      return json({ ok: true, card: card({ id, status }), ...(options.action || {}) })
     }
-    if (url.endsWith('/api/decisions') && method === 'GET') return json({ ok: true, precedents })
+    if (url.endsWith('/api/decisions') && method === 'GET')
+      return json({ ok: true, precedents, records })
     if (url.endsWith('/api/decisions') && method === 'POST') return json({ ok: true })
     if (url.endsWith('/api/settings') && method === 'GET') return json({ ok: true, settings })
     if (url.endsWith('/api/settings') && method === 'POST')
@@ -210,7 +257,7 @@ describe('面板', () => {
           status: 'done',
           title: '已经处理完的决策',
           createdAt: now,
-          origin: { sessionId: 's-new' },
+          origin: { sessionId: 's-new', reason: '' },
         }),
         card({
           id: 'c-open',
@@ -218,7 +265,7 @@ describe('面板', () => {
           status: 'open',
           title: '等我拍板的决策',
           createdAt: now - 60_000,
-          origin: { sessionId: 's-old' },
+          origin: { sessionId: 's-old', reason: '' },
         }),
         card({
           id: 'c-info',
@@ -226,7 +273,7 @@ describe('面板', () => {
           status: 'open',
           title: '等我知晓的事',
           createdAt: now - 120_000,
-          origin: { sessionId: 's-old' },
+          origin: { sessionId: 's-old', reason: '' },
         }),
       ],
     })
@@ -237,14 +284,52 @@ describe('面板', () => {
     expect(texts[texts.length - 1]).toBe('已经处理完的决策')
   })
 
-  it('点「批准」发出 complete 动作', async () => {
-    const { calls } = stubApi({ cards: [card({ id: 'c-9', kind: 'decision', title: '删掉旧表' })] })
+  it('顶部是「卡片 / 观察者 / 决策」三个页签，能来回切', async () => {
+    stubApi({ cards: [card()] })
+    render(<Panel t={translate} />)
+    for (const key of ['tabCards', 'tabObserver', 'tabDecision'] as const) {
+      expect(screen.getByText(zh[key] as string)).toBeTruthy()
+    }
+    fireEvent.click(screen.getByText(zh.tabObserver as string))
+    expect(await screen.findByText(zh.observerSection as string)).toBeTruthy()
+    expect(await screen.findByDisplayValue('只输出 JSON')).toBeTruthy()
+    expect(screen.getByText(zh.enabled as string)).toBeTruthy()
+    fireEvent.click(screen.getByText(zh.tabDecision as string))
+    expect(await screen.findByText(zh.decisionSection as string)).toBeTruthy()
+    expect(await screen.findByPlaceholderText(zh.decisionPromptPlaceholder as string)).toBeTruthy()
+    expect(screen.getByText(zh.decisionAutoApply as string)).toBeTruthy()
+    // 观察者页的提示词框不在决策页
+    expect(screen.queryByDisplayValue('只输出 JSON')).toBeNull()
+    fireEvent.click(screen.getByText(zh.tabCards as string))
+    expect(await screen.findByText('登录页空态要补')).toBeTruthy()
+  })
+
+  it('决策卡点「批准」发出 approve，并把「已推回原会话」说出来', async () => {
+    const { calls } = stubApi({
+      cards: [card({ id: 'c-9', kind: 'decision', title: '删掉旧表' })],
+      action: { pushed: true },
+    })
     render(<Panel t={translate} />)
     await screen.findByText('删掉旧表')
     fireEvent.click(screen.getByText(zh.approve as string))
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/api/action'))).toBe(true))
     const action = calls.find((item) => item.url.endsWith('/api/action'))
-    expect(action?.body).toMatchObject({ id: 'c-9', action: 'complete' })
+    expect(action?.body).toMatchObject({ id: 'c-9', action: 'approve' })
+    expect(await screen.findByText(zh.approvePushed as string)).toBeTruthy()
+  })
+
+  it('批准时没有可回访会话：把宿主给的原因显示出来，卡仍然结束', async () => {
+    const reason = '这张卡没有可回访的会话，已标记完成'
+    stubApi({
+      cards: [card({ id: 'c-9', kind: 'decision', title: '删掉旧表' })],
+      action: { pushed: false, reason },
+    })
+    render(<Panel t={translate} />)
+    await screen.findByText('删掉旧表')
+    fireEvent.click(screen.getByText(zh.approve as string))
+    expect(await screen.findByText(reason)).toBeTruthy()
+    // 不静默：卡真的结束了，批准按钮不再出现。
+    await waitFor(() => expect(screen.queryByText(zh.approve as string)).toBeNull())
   })
 
   it('手写一条卡：POST /cards 并清空输入', async () => {
@@ -261,12 +346,13 @@ describe('面板', () => {
     await waitFor(() => expect(input.value).toBe(''))
   })
 
-  it('提示词页会拉设置，保存时 POST /settings', async () => {
+  it('观察者页会拉设置，保存时 POST /settings', async () => {
     const { calls } = stubApi({ settings: SETTINGS })
     render(<Panel t={translate} />)
-    fireEvent.click(await screen.findByText(zh.tabSettings as string))
+    fireEvent.click(await screen.findByText(zh.tabObserver as string))
     const textarea = (await screen.findByDisplayValue('只输出 JSON')) as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: '新的提示词' } })
+    fireEvent.change(textarea, { target: { value: '新的观察者提示词' } })
+    expect(screen.getByText(zh.minReplyChars as string)).toBeTruthy()
     fireEvent.click(screen.getByText(zh.save as string))
     await waitFor(() =>
       expect(
@@ -275,8 +361,56 @@ describe('面板', () => {
     )
     const saved = calls.find((item) => item.method === 'POST' && item.url.endsWith('/api/settings'))
     expect((saved?.body as { settings: Settings } | undefined)?.settings.systemPrompt).toBe(
-      '新的提示词',
+      '新的观察者提示词',
     )
+  })
+
+  it('决策页能保存决策提示词与自动执行开关，判例列表把返工过的标红', async () => {
+    const { calls } = stubApi({ settings: SETTINGS })
+    const { container } = render(<Panel t={translate} />)
+    fireEvent.click(await screen.findByText(zh.tabDecision as string))
+    const autoApply = (await screen.findByText(zh.decisionAutoApply as string)).closest('label')
+    const checkbox = autoApply?.querySelector('input')
+    expect(checkbox).toBeTruthy()
+    fireEvent.click(checkbox as HTMLElement)
+    const prompt = (await screen.findByPlaceholderText(
+      zh.decisionPromptPlaceholder as string,
+    )) as HTMLTextAreaElement
+    fireEvent.change(prompt, { target: { value: '我的决策画像' } })
+    await waitFor(() => expect(container.querySelector('.dtc-precedent.is-reworked')).toBeTruthy())
+    const reworked = container.querySelector('.dtc-precedent.is-reworked') as HTMLElement
+    expect(reworked.textContent).toContain('旧表下线')
+    fireEvent.click(screen.getByText(zh.save as string))
+    await waitFor(() =>
+      expect(
+        calls.some((item) => item.method === 'POST' && item.url.endsWith('/api/settings')),
+      ).toBe(true),
+    )
+    const saved = calls.find((item) => item.method === 'POST' && item.url.endsWith('/api/settings'))
+    const body = saved?.body as { settings: Settings } | undefined
+    expect(body?.settings.decisionPrompt).toBe('我的决策画像')
+    expect(body?.settings.decisionAutoApply).toBe(false)
+  })
+
+  it('决策页显示最近执行记录：状态、模型、耗时、张数与错误', async () => {
+    stubApi({ settings: SETTINGS, records: RECORDS })
+    render(<Panel t={translate} />)
+    fireEvent.click(await screen.findByText(zh.tabDecision as string))
+    expect(await screen.findByText(zh.recordStatus_ok as string)).toBeTruthy()
+    expect(screen.getByText(zh.recordStatus_error as string)).toBeTruthy()
+    expect(screen.getAllByText(translate('recordModel', { model: 'deepseek-chat' })).length).toBe(2)
+    expect(screen.getByText(translate('recordDuration', { duration: '2.4s' }))).toBeTruthy()
+    expect(
+      screen.getByText(translate('recordCounts', { created: 3, applied: 1, corrected: 2 })),
+    ).toBeTruthy()
+    expect(screen.getByText(translate('recordError', { error: '429 rate limited' }))).toBeTruthy()
+  })
+
+  it('决策页没跑过时显示「还没有跑过」', async () => {
+    stubApi({ settings: SETTINGS, records: [] })
+    render(<Panel t={translate} />)
+    fireEvent.click(await screen.findByText(zh.tabDecision as string))
+    expect(await screen.findByText(zh.recordEmpty as string)).toBeTruthy()
   })
 
   it('决策卡有票拟时，卡片行显示结论 + 摘要 + 把握', async () => {
@@ -331,6 +465,49 @@ describe('面板', () => {
     expect(action?.body).toMatchObject({ id: 'c-dec', action: 'adopt', option: '1' })
   })
 
+  it('票拟标出推荐方案与「系统可自动执行」，已执行时显示「已由系统自动执行」', async () => {
+    stubApi({
+      cards: [
+        card({
+          id: 'c-dec',
+          kind: 'decision',
+          title: '删掉旧表',
+          advice: ADVICE,
+          events: [{ at: Date.now(), type: 'advice-applied' }],
+        }),
+      ],
+    })
+    render(<Panel t={translate} />)
+    await screen.findByText('删掉旧表')
+    // 卡片行一眼能看到「已由系统自动执行」
+    expect(screen.getByText(zh.adviceAutoApplied as string)).toBeTruthy()
+    fireEvent.click(screen.getByText(zh.detail as string))
+    await screen.findByText('B: 完整重构')
+    expect(screen.getAllByText(zh.adviceChosen as string).length).toBe(1)
+    expect(screen.getByText(zh.adviceAutoApply as string)).toBeTruthy()
+    // 卡片行 + 详情票拟区块
+    expect(screen.getAllByText(zh.adviceAutoApplied as string).length).toBe(2)
+  })
+
+  it('详情弹窗在卡片块下方显示观察者判定依据', async () => {
+    stubApi({
+      cards: [
+        card({
+          id: 'c-dec',
+          kind: 'decision',
+          title: '删掉旧表',
+          origin: { reason: '模型在等你确认是否开始重构' },
+        }),
+      ],
+    })
+    render(<Panel t={translate} />)
+    await screen.findByText('删掉旧表')
+    fireEvent.click(screen.getByText(zh.detail as string))
+    expect(
+      await screen.findByText(translate('originReason', { reason: '模型在等你确认是否开始重构' })),
+    ).toBeTruthy()
+  })
+
   it('详情弹窗「这个决定后来返工了」发出 mark-reworked 和一句原因', async () => {
     const { calls } = stubApi({
       cards: [card({ id: 'c-dec', kind: 'decision', title: '删掉旧表', advice: ADVICE })],
@@ -372,28 +549,5 @@ describe('面板', () => {
     await screen.findByText(`需要你先补一句：${waitAdvice.question}`)
     fireEvent.click(await screen.findByText('P-002'))
     await screen.findByText('旧表下线')
-  })
-
-  it('设置页保存决策提示词，判例列表把返工过的标红', async () => {
-    const { calls } = stubApi({ settings: SETTINGS })
-    const { container } = render(<Panel t={translate} />)
-    fireEvent.click(await screen.findByText(zh.tabSettings as string))
-    const prompt = (await screen.findByPlaceholderText(
-      zh.decisionPromptPlaceholder as string,
-    )) as HTMLTextAreaElement
-    fireEvent.change(prompt, { target: { value: '我的决策画像' } })
-    await waitFor(() => expect(container.querySelector('.dtc-precedent.is-reworked')).toBeTruthy())
-    const reworked = container.querySelector('.dtc-precedent.is-reworked') as HTMLElement
-    expect(reworked.textContent).toContain('旧表下线')
-    fireEvent.click(screen.getByText(zh.save as string))
-    await waitFor(() =>
-      expect(
-        calls.some((item) => item.method === 'POST' && item.url.endsWith('/api/settings')),
-      ).toBe(true),
-    )
-    const saved = calls.find((item) => item.method === 'POST' && item.url.endsWith('/api/settings'))
-    expect((saved?.body as { settings: Settings } | undefined)?.settings.decisionPrompt).toBe(
-      '我的决策画像',
-    )
   })
 })

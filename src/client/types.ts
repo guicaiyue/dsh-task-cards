@@ -7,6 +7,7 @@ import type {
   Card,
   CardKind,
   CardSeverity,
+  ObserverRecord,
   Precedent,
   PrecedentOutcome,
   Settings,
@@ -47,6 +48,9 @@ export interface DetailState {
 /** 面板文案函数：键 + 可选占位符。 */
 export type Translate = (key: string, vars?: Record<string, string | number>) => string
 
+/** 顶部页签：卡片 / 观察者 / 决策。 */
+export type PanelTab = 'cards' | 'observer' | 'decision'
+
 export type CardActionName =
   | 'complete'
   | 'acknowledge'
@@ -57,10 +61,27 @@ export type CardActionName =
   | 'answer'
   /** 采纳票拟里的第 N 个方案（option 是 0 起序号）。 */
   | 'adopt'
+  /** 决策卡批红：把话推回原会话并把卡标结束（pushed/reason 由宿主回）。 */
+  | 'approve'
   /** 这个决定后来返工了（option 是返工原因，可空）。 */
   | 'mark-reworked'
 
-export type ActionResult = { action: CardActionName; card: Card | null } | undefined
+export interface ActionResult {
+  action: CardActionName
+  card: Card | null
+  /** approve 专用：宿主是否真的把结论投回了原会话。 */
+  pushed?: boolean
+  /** approve 专用：pushed=false 时宿主给的一句原因。 */
+  reason?: string
+}
+
+export type ActionOutcome = ActionResult | undefined
+
+/** 批准后要告诉用户的结果：推回去了，还是只结束了卡（附原因）。 */
+export interface ActionNotice {
+  pushed: boolean
+  reason: string
+}
 
 export type {
   Advice,
@@ -69,6 +90,7 @@ export type {
   Card,
   CardKind,
   CardSeverity,
+  ObserverRecord,
   Precedent,
   PrecedentOutcome,
   Settings,

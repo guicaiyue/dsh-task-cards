@@ -4,6 +4,7 @@ import { type PanelState, usePanelState } from '../hooks/usePanelState'
 import type { Translate } from '../types'
 import { CardsTab } from './CardsTab'
 import { DetailModal } from './DetailModal'
+import { NoticeToast } from './NoticeToast'
 import { KpiRow, PanelHeader, TabBar } from './PanelHeader'
 import { SettingsTab } from './SettingsTab'
 
@@ -21,6 +22,9 @@ export function Panel({ t, uiWorkspace }: Props) {
       <PanelHeader t={t} cards={state.cards} onRefresh={actions.onRefresh} />
       <KpiRow t={t} cards={state.cards} />
       <TabBar t={t} tab={tab} onChange={setTab} />
+      {state.notice ? (
+        <NoticeToast t={t} notice={state.notice} onClose={state.dismissNotice} />
+      ) : null}
       {state.error ? <Banner message={state.error} /> : null}
       {state.detail ? (
         <DetailModal
@@ -49,36 +53,38 @@ function Banner({ message }: { message: string }) {
   )
 }
 
-/** 卡片页 / 提示词页二选一：两块各自独立，装配留在这里。 */
+/** 卡片页 / 观察者页 / 决策页三选一：三块各自独立，装配留在这里。 */
 function TabBody({ t, state }: { t: Translate; state: PanelState }) {
   const { tab, actions, detailApi } = state
-  if (tab === 'settings') {
+  if (tab === 'cards') {
     return (
-      <SettingsTab
+      <CardsTab
         t={t}
-        settings={state.settings}
-        models={state.models}
-        precedents={state.precedents}
+        cards={state.cards}
         busy={state.busy}
-        onSave={state.saveSettings}
+        draft={state.draft}
+        loading={state.loading}
+        titles={state.titles}
+        onDraftChange={state.setDraft}
+        onAdd={actions.onAdd}
+        onAction={actions.onAction}
+        onAnswer={actions.onAnswer}
+        onRedecide={actions.onRedecide}
+        onDetail={(target) => detailApi.openDetail(target).catch(() => {})}
+        onOpenSession={state.openSession}
       />
     )
   }
   return (
-    <CardsTab
+    <SettingsTab
       t={t}
-      cards={state.cards}
+      tab={tab}
+      settings={state.settings}
+      models={state.models}
+      precedents={state.precedents}
+      records={state.records}
       busy={state.busy}
-      draft={state.draft}
-      loading={state.loading}
-      titles={state.titles}
-      onDraftChange={state.setDraft}
-      onAdd={actions.onAdd}
-      onAction={actions.onAction}
-      onAnswer={actions.onAnswer}
-      onRedecide={actions.onRedecide}
-      onDetail={(target) => detailApi.openDetail(target).catch(() => {})}
-      onOpenSession={state.openSession}
+      onSave={state.saveSettings}
     />
   )
 }

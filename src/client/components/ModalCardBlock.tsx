@@ -17,6 +17,9 @@ export function ModalCardBlock({ t, card, busy, onAction }: Props) {
     <div className="dtc-card-block">
       <div className="dtc-card-block-title">{card.title}</div>
       {card.detail ? <div className="dtc-card-block-detail">{card.detail}</div> : null}
+      {card.origin?.reason ? (
+        <div className="dtc-origin-reason">{t('originReason', { reason: card.origin.reason })}</div>
+      ) : null}
       <QuestionOptions
         t={t}
         card={card}
@@ -41,7 +44,7 @@ function CardBlockActions({ t, card, busy, onAction }: Props) {
           type="button"
           className="dtc-btn is-primary"
           disabled={busy}
-          onClick={() => onAction(card, 'complete')}
+          onClick={() => onAction(card, 'approve')}
         >
           {t('approve')}
         </button>

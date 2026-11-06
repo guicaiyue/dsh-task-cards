@@ -2,7 +2,14 @@
 //
 // 词条全部在 locale/{zh,en}.ts（值必须是字符串）；这里只拼键名，不写中文。
 
-import type { AdviceVerdict, CardKind, CardSeverity, PrecedentOutcome, Translate } from './types'
+import type {
+  AdviceVerdict,
+  Card,
+  CardKind,
+  CardSeverity,
+  PrecedentOutcome,
+  Translate,
+} from './types'
 
 const VERDICT_TONE: Record<AdviceVerdict, string> = {
   approve: 'is-approve',
@@ -41,4 +48,9 @@ export function outcomeLabel(t: Translate, outcome: PrecedentOutcome): string {
 
 export function laneLabel(t: Translate, lane: CardKind): string {
   return t(`lane_${lane}`)
+}
+
+/** 系统是否已经替用户执行过这张卡的票拟（宿主写 advice-applied 事件）。 */
+export function isAdviceApplied(card: Pick<Card, 'events'>): boolean {
+  return card.events.some((event) => event.type === 'advice-applied')
 }

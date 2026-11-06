@@ -1,7 +1,13 @@
 // 面板顶部：标题 + 刷新；下面是四个 KPI。
 
 import { groupCards } from '../../shared/state'
-import type { Card, Translate } from '../types'
+import type { Card, PanelTab, Translate } from '../types'
+
+const TABS: Array<{ id: PanelTab; label: string }> = [
+  { id: 'cards', label: 'tabCards' },
+  { id: 'observer', label: 'tabObserver' },
+  { id: 'decision', label: 'tabDecision' },
+]
 
 interface Props {
   t: Translate
@@ -55,25 +61,21 @@ export function TabBar({
   onChange,
 }: {
   t: Translate
-  tab: 'cards' | 'settings'
-  onChange: (tab: 'cards' | 'settings') => void
+  tab: PanelTab
+  onChange: (tab: PanelTab) => void
 }) {
   return (
     <div className="dtc-tabs">
-      <button
-        type="button"
-        className={`dtc-tab${tab === 'cards' ? ' is-active' : ''}`}
-        onClick={() => onChange('cards')}
-      >
-        {t('tabCards')}
-      </button>
-      <button
-        type="button"
-        className={`dtc-tab${tab === 'settings' ? ' is-active' : ''}`}
-        onClick={() => onChange('settings')}
-      >
-        {t('tabSettings')}
-      </button>
+      {TABS.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className={`dtc-tab${tab === item.id ? ' is-active' : ''}`}
+          onClick={() => onChange(item.id)}
+        >
+          {t(item.label)}
+        </button>
+      ))}
     </div>
   )
 }

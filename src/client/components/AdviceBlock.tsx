@@ -18,6 +18,8 @@ interface Props {
   precedents: Precedent[]
   busy: boolean
   closed: boolean
+  /** 系统已经替用户执行过这张票拟（卡上有 advice-applied 事件）。 */
+  autoApplied: boolean
   onAdopt: (index: number) => void
   onReworked: (note: string) => void
 }
@@ -29,6 +31,7 @@ export function AdviceBlock({
   precedents,
   busy,
   closed,
+  autoApplied,
   onAdopt,
   onReworked,
 }: Props) {
@@ -36,7 +39,7 @@ export function AdviceBlock({
   const cited = precedents.filter((item) => advice.precedentIds.includes(item.id))
   return (
     <div className="dtc-advice">
-      <AdviceHead t={t} advice={advice} cardKind={cardKind} />
+      <AdviceHead t={t} advice={advice} cardKind={cardKind} autoApplied={autoApplied} />
       {advice.summary ? <div className="dtc-advice-summary">{advice.summary}</div> : null}
       {advice.verdict === 'wait' && advice.question ? (
         <div className="dtc-advice-question">
@@ -45,17 +48,22 @@ export function AdviceBlock({
       ) : null}
       {advice.options.length ? (
         <div className="dtc-advice-options">
-          {advice.options.map((option, index) => (
-            <AdviceOptionCard
-              key={`${option.name}::${option.verdict}::${option.answer}`}
-              t={t}
-              option={option}
-              index={index}
-              busy={busy}
-              closed={closed}
-              onAdopt={onAdopt}
-            />
-          ))}
+          {advice.options.map((option, index) => {
+            const chosen = index === advice.chosen
+            return (
+              <AdviceOptionCard
+                key={`${option.name}::${option.verdict}::${option.answer}`}
+                t={t}
+                option={option}
+                index={index}
+                chosen={chosen}
+                autoApply={chosen && advice.autoApply}
+                busy={busy}
+                closed={closed}
+                onAdopt={onAdopt}
+              />
+            )
+          })}
         </div>
       ) : null}
       {advice.basis ? (
@@ -73,13 +81,24 @@ export function AdviceBlock({
   )
 }
 
-function AdviceHead({ t, advice, cardKind }: { t: Translate; advice: Advice; cardKind: CardKind }) {
+function AdviceHead({
+  t,
+  advice,
+  cardKind,
+  autoApplied,
+}: {
+  t: Translate
+  advice: Advice
+  cardKind: CardKind
+  autoApplied: boolean
+}) {
   return (
     <div className="dtc-advice-head">
       <span className="dtc-advice-eyebrow">{t('adviceEyebrow')}</span>
       <span className={`dtc-chip ${verdictTone(advice.verdict)}`}>
         {verdictLabel(t, advice.verdict)}
       </span>
+      {autoApplied ? <span className="dtc-chip is-approve">{t('adviceAutoApplied')}</span> : null}
       <span className="dtc-advice-confidence">{confidenceLabel(t, advice.confidence)}</span>
       {advice.lane !== cardKind ? (
         <span className="dtc-advice-lane">

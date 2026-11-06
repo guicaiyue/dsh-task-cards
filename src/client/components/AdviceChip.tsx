@@ -2,7 +2,7 @@
 //
 // 只占一行，不挤掉标题/时间/kind；摘要过长用 CSS 省略，hover 看全文。
 
-import { confidenceLabel, verdictLabel, verdictTone } from '../advice'
+import { confidenceLabel, isAdviceApplied, verdictLabel, verdictTone } from '../advice'
 import type { Card, Translate } from '../types'
 
 interface Props {
@@ -29,6 +29,9 @@ export function AdviceChip({ t, card, busy, onRedecide }: Props) {
       <span className={`dtc-chip ${verdictTone(advice.verdict)}`}>
         {verdictLabel(t, advice.verdict)}
       </span>
+      {isAdviceApplied(card) ? (
+        <span className="dtc-chip is-approve">{t('adviceAutoApplied')}</span>
+      ) : null}
       <span className="dtc-advice-line-confidence">{confidenceLabel(t, advice.confidence)}</span>
       {advice.summary ? (
         <span className="dtc-advice-line-summary" title={advice.summary}>
