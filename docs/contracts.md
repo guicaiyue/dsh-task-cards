@@ -30,8 +30,8 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | `action` | `{type, delayMs, input, sessionId?}` 或 `null` | 到点要补的那句话；有 action 才可能 `scheduled` |
 | `interaction` | `reply` / `question` | 普通回合记录 / 模型提问把对话卡住了 |
 | `question` | `{sessionId?, callId?, items[]}` 或 `null` | 问题卡的选项，面板据此作答 |
-| `origin` | `{sessionId?, turn?, observerSessionId?}` | 追溯：哪次会话、第几轮、哪个观察者会话 |
-| `advice` | `{verdict, summary, options[], basis, precedentIds[], confidence, question, lane, applied, at}` 或 `null` | 决策代理人的票拟；见 [决策代理人](decision-agent.md) |
+| `origin` | `{sessionId?, turn?, observerSessionId?, reason}` | 追溯：哪次会话、第几轮、哪个观察者会话；`reason` 是观察者的分类凭据（一句话） |
+| `advice` | `{verdict, summary, options[], chosen, autoApply, basis, precedentIds[], confidence, question, lane, applied, at}` 或 `null` | 决策代理人的票拟；`chosen` 是推荐方案序号，`autoApply` 表示该推荐可逆且便宜、允许系统直接执行；见 [决策代理人](decision-agent.md) |
 | `events` | `[{at, type, via?}]` | 追加式审计：created / completed / answered / auto-executed … |
 
 **状态机**（`src/shared/state.ts`）
@@ -44,6 +44,7 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | `reopen` | `open` | `reopened` |
 | `answer` | `done` | `answered` |
 | `adopt` | `done`（用方案里的 `answer` 走 `answer` 那条路） | `answered` |
+| `approve` | `done`，**并把一句话投回原会话**；无会话/投递失败也照样结束（返回 `pushed:false`） | `approved` |
 | `mark-reworked` | 不变（判例改 `reworked`） | `reworked` |
 | `run-now` / 扫描器执行成功 | `done` | `auto-executed` |
 | 扫描器执行失败 | `open` + `lastError` | `auto-failed` |
@@ -56,15 +57,15 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 ## 设置（`SettingsSchema`）
 
 `systemPrompt`、`provider`、`model`、`enabled`、`minReplyChars`、`includeSubagents`、`maxInputBytes`、`timeoutMs`。
-决策阶段另有 `decisionEnabled`、`decisionPrompt`、`decisionProvider`、`decisionModel`、`decisionPrecedentLimit`。
+决策阶段另有 `decisionEnabled`、`decisionPrompt`、`decisionProvider`、`decisionModel`、`decisionPrecedentLimit`、`decisionAutoApply`。
 默认值在 `src/host/cards/defaults.ts`；`systemPrompt` 的默认文本就是分类契约（kind 的判定标准），改它等于改分类行为；`decisionPrompt` 为空的含义是「用内置的决策画像」（`src/host/decision/defaults.ts`），不是「没有提示词」。
 
 ## 票拟与判例（`AdviceSchema` / `PrecedentSchema`）
 
 ```
 card.advice = { verdict: approve|reject|modify|wait, summary, confidence, question,
-                options: [{ name, cost, gain, worst, answer, verdict }]  // 最多 3 个
-                basis, precedentIds[], lane, applied, at }
+                options: [{ name, cost, gain, worst, answer, verdict }],  // 最多 3 个
+                chosen, autoApply, basis, precedentIds[], lane, applied, at }
 ```
 
 - `verdict`：`approve` 照办 / `reject` 不该做 / `modify` 改后批 / `wait` 现在别决（配 `question` 追问）。
@@ -94,14 +95,14 @@ precedent = { id, at, cardId, title, question, choice, outcome: unknown|valid|re
 | GET | `/workspaces` | 诊断：工作区里挂了哪些会话 |
 | GET | `/timeline` | 详情弹窗的时间线（`?id=`） |
 | GET | `/titles` | 批量取会话标题（`?ids=a,b`） |
-| GET/POST | `/decisions` | 判例列表 / `mark-reworked`、`redecide`（对某张卡重出票拟） |
+| GET/POST | `/decisions` | 判例 + 决策执行记录（`{precedents, records}`） / `mark-reworked`、`redecide` |
 | POST | `/presence` | 面板心跳（宿主未注册 = 静默忽略，客户端不依赖它） |
 
 错误统一为 `{ok:false, code, error}`：`400`（业务错误，code 稳定：`EMPTY_TITLE` `TITLE_TOO_LONG` `NOT_FOUND` `BAD_STATE` `MISSING_ID` `BAD_JSON` `BODY_TOO_LARGE` …）、`403`（跨站/非回环）、`405`（方法不对）、`500`（内部错误，带 `detail`）。
 
 ## 观察者记录（`RecordSchema`）
 
-每次观察者运行留一条：模型、输入输出长度、token、工具调用次数、耗时、重试次数、状态（`ok` / `empty` / `invalid` / `error`）、建了几张卡、输出摘录。面板与 `/inspect` 用它判断「观察者到底干活了没有」。
+观察者与决策阶段各留一条，用 `phase`（`observer` / `decision`）区分：模型、输入输出长度、token、工具调用次数、耗时、重试次数、状态（`ok` / `empty` / `invalid` / `error`）、出了几张卡/几张票拟、自动执行张数（`applied`）、降车道张数（`corrected`）、输出摘录。面板「决策」页签用它回答「决策者到底跑没跑」。
 
 ## 契约怎么被守住
 
