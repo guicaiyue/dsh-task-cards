@@ -1,21 +1,26 @@
-// 观察者模型选择：空值 = 跟随当前默认模型；否则 provider::model。
+// 模型选择：空值 = 跟随当前默认模型；否则 provider::model。
+//
+// 观察者与决策代理人共用，字段名由调用方映射（provider/model 各传各的）。
 
-import type { ModelCatalogView, Settings, Translate } from '../types'
+import type { ModelCatalogView, Translate } from '../types'
 
 interface Props {
   t: Translate
-  value: Settings
+  /** 不传就用通用标签「分析用的模型」。 */
+  label?: string
+  provider: string
+  model: string
   models: ModelCatalogView | null
-  onChange: (patch: Partial<Settings>) => void
+  onChange: (value: { provider: string; model: string }) => void
 }
 
-export function ModelPicker({ t, value, models, onChange }: Props) {
+export function ModelPicker({ t, label, provider, model, models, onChange }: Props) {
   const groups = models?.groups || []
-  const selected = value.provider && value.model ? `${value.provider}::${value.model}` : ''
+  const selected = provider && model ? `${provider}::${model}` : ''
   return (
     <div className="dtc-row">
       <div className="dtc-field" style={{ flex: 1, minWidth: '260px' }}>
-        <span>{t('model')}</span>
+        <span>{label || t('model')}</span>
         <select
           className="dtc-select"
           value={selected}
@@ -25,19 +30,19 @@ export function ModelPicker({ t, value, models, onChange }: Props) {
               onChange({ provider: '', model: '' })
               return
             }
-            const [provider, model] = raw.split('::')
-            onChange({ provider, model })
+            const [nextProvider, nextModel] = raw.split('::')
+            onChange({ provider: nextProvider || '', model: nextModel || '' })
           }}
         >
           <option value="">{t('modelDefault')}</option>
           {groups.map((group) => (
             <optgroup key={group.provider} label={group.provider}>
-              {(group.models || []).map((model) => (
+              {(group.models || []).map((item) => (
                 <option
-                  key={`${group.provider}::${model.id}`}
-                  value={`${group.provider}::${model.id}`}
+                  key={`${group.provider}::${item.id}`}
+                  value={`${group.provider}::${item.id}`}
                 >
-                  {model.name}
+                  {item.name}
                 </option>
               ))}
             </optgroup>

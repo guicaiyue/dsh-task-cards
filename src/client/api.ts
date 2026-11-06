@@ -1,7 +1,7 @@
 // 面板后端调用：所有请求经宿主路由，错误统一成一句人话。
 
 import { API } from './constants'
-import type { Card, ModelCatalogView, Settings, Turn } from './types'
+import type { Card, ModelCatalogView, Precedent, Settings, Turn } from './types'
 
 interface Envelope {
   ok?: boolean
@@ -60,6 +60,32 @@ export async function actOnCard(
 export async function fetchSettings(): Promise<Settings> {
   const body = await call<{ settings: Settings }>(`${API}/settings`)
   return body.settings
+}
+
+/** 判例库：用户过去同类决定，返工过的（outcome=reworked）不再当准绳。 */
+export async function fetchDecisions(): Promise<{ precedents: Precedent[] }> {
+  const body = await call<{ precedents?: Precedent[] }>(`${API}/decisions`)
+  return { precedents: body.precedents || [] }
+}
+
+/** 让决策代理人给这张卡重出一张票拟；结果异步写回卡上，前端刷新就能看到。 */
+export async function redecide(id: string): Promise<void> {
+  await call<{ ok?: boolean }>(`${API}/decisions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'redecide', id }),
+  })
+}
+
+/** 采纳第 index 个方案（0 起）：宿主把该方案的 answer 回给原会话。 */
+export function adopt(id: string, index: number): Promise<{ card: Card | null }> {
+  const safe = Number.isInteger(index) && index >= 0 ? index : 0
+  return actOnCard(id, 'adopt', String(safe))
+}
+
+/** 标记这个决定后来返工了；note 是一句原因（可空）。 */
+export function markReworked(id: string, note?: string): Promise<{ card: Card | null }> {
+  return actOnCard(id, 'mark-reworked', note?.trim() || undefined)
 }
 
 export async function saveSettings(settings: Settings): Promise<Settings> {

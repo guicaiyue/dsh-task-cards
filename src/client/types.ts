@@ -1,6 +1,16 @@
 // 客户端侧的类型：只引用 shared 的类型，不把 zod 带进浏览器。
 
-import type { Card, Settings } from '../shared/contract'
+import type {
+  Advice,
+  AdviceOption,
+  AdviceVerdict,
+  Card,
+  CardKind,
+  CardSeverity,
+  Precedent,
+  PrecedentOutcome,
+  Settings,
+} from '../shared/contract'
 
 export interface Turn {
   user: string
@@ -45,7 +55,21 @@ export type CardActionName =
   | 'delete'
   | 'run-now'
   | 'answer'
+  /** 采纳票拟里的第 N 个方案（option 是 0 起序号）。 */
+  | 'adopt'
+  /** 这个决定后来返工了（option 是返工原因，可空）。 */
+  | 'mark-reworked'
 
 export type ActionResult = { action: CardActionName; card: Card | null } | undefined
 
-export type { Card, Settings }
+export type {
+  Advice,
+  AdviceOption,
+  AdviceVerdict,
+  Card,
+  CardKind,
+  CardSeverity,
+  Precedent,
+  PrecedentOutcome,
+  Settings,
+}

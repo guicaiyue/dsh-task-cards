@@ -13,10 +13,11 @@ interface Props {
   open: boolean
   busy: boolean
   onToggle: (sessionId: string) => void
-  onDetail: (target: { sessionId: string; title: string }) => void
+  onDetail: (target: { sessionId: string; title: string; card?: Card | null }) => void
   onOpenSession: (sessionId: string) => void
   onAction: (card: Card, action: CardActionName, option?: string) => void
   onAnswer: (card: Card, option: string) => void
+  onRedecide: (card: Card) => void
 }
 
 interface HeadProps {
@@ -98,6 +99,7 @@ export function TreeNode({
   onOpenSession,
   onAction,
   onAnswer,
+  onRedecide,
 }: Props) {
   const manual = !sessionId
   // 组头的时间取「最近一张」，待处理数取组内还没结束的卡。
@@ -129,8 +131,9 @@ export function TreeNode({
                 busy={busy}
                 onAction={onAction}
                 onAnswer={onAnswer}
+                onRedecide={onRedecide}
                 onDetail={(target) =>
-                  onDetail({ sessionId: target.sessionId, title: target.title })
+                  onDetail({ sessionId: target.sessionId, title: target.title, card: target.card })
                 }
               />
             </div>

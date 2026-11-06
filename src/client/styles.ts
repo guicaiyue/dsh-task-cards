@@ -135,6 +135,64 @@ body[data-ds-dark-theme] .dtc-page {
 .dtc-more { align-self: flex-start; margin-top: 2px; padding: 0; border: none; background: none; color: var(--dtc-primary); font-size: 11px; cursor: pointer; }
 .dtc-more:hover { text-decoration: underline; }
 .dtc-earlier { align-self: center; margin-top: 2px; }
+/* ── 票拟：卡片行结论 chip ───────────────────────────────── */
+.dtc-chip.is-approve { color: var(--dtc-success); border-color: var(--dtc-success); }
+.dtc-chip.is-reject { color: var(--dtc-danger); border-color: var(--dtc-danger); }
+.dtc-chip.is-modify { color: var(--dtc-accent); border-color: var(--dtc-accent); }
+.dtc-chip.is-wait { color: var(--dtc-primary); border-color: var(--dtc-primary); }
+.dtc-chip.is-pending { color: var(--dtc-faint); border-style: dashed; }
+.dtc-advice-line { margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; }
+.dtc-advice-line-summary { color: var(--dtc-text); max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dtc-advice-line-confidence { color: var(--dtc-muted); }
+/* ── 票拟：详情弹窗区块 ─────────────────────────────────── */
+.dtc-advice { margin: 0; padding: 12px 14px; border: 1px solid var(--dtc-accent); border-radius: 10px;
+  background: var(--dtc-surface); display: flex; flex-direction: column; gap: 10px; }
+.dtc-advice-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.dtc-advice-eyebrow { font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--dtc-accent); }
+.dtc-advice-confidence { font-size: 11px; color: var(--dtc-muted); }
+.dtc-advice-lane { font-size: 11px; color: var(--dtc-primary); }
+.dtc-advice-at { font-size: 11px; color: var(--dtc-faint); }
+.dtc-advice-summary { font-size: 13px; font-weight: 600; line-height: 1.55; color: var(--dtc-ink); overflow-wrap: anywhere; }
+.dtc-advice-question { padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.6;
+  color: var(--dtc-ink); background: var(--dtc-accent-soft); }
+.dtc-advice-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.dtc-advice-option { display: flex; flex-direction: column; gap: 7px; padding: 10px; border-radius: 8px;
+  border: 1px solid var(--dtc-border); background: var(--dtc-raise); }
+.dtc-advice-option-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dtc-advice-option-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--dtc-ink); overflow-wrap: anywhere; }
+.dtc-advice-facts { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.dtc-advice-facts div { display: flex; gap: 6px; font-size: 11.5px; line-height: 1.5; }
+.dtc-advice-facts dt { flex: 0 0 56px; color: var(--dtc-faint); }
+.dtc-advice-facts dd { margin: 0; flex: 1; min-width: 0; color: var(--dtc-muted); overflow-wrap: anywhere; }
+.dtc-advice-answer { padding: 6px 8px; border: 1px dashed var(--dtc-border); border-radius: 6px;
+  font-size: 11px; line-height: 1.55; color: var(--dtc-muted); background: var(--dtc-surface); }
+.dtc-advice-basis { font-size: 12px; line-height: 1.6; color: var(--dtc-muted); }
+.dtc-advice-precedents { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--dtc-faint); }
+.dtc-advice-precedents-hint { color: var(--dtc-faint); }
+.dtc-advice-link { padding: 1px 7px; border-radius: 999px; border: 1px solid var(--dtc-border);
+  background: transparent; color: var(--dtc-primary); font: inherit; font-size: 11px; cursor: pointer; }
+.dtc-advice-link:hover { background: var(--dtc-primary-soft); }
+.dtc-advice-rework { display: flex; align-items: center; gap: 8px; padding-top: 9px;
+  border-top: 1px dashed var(--dtc-line); }
+.dtc-advice-rework .dtc-input { flex: 1; }
+.dtc-advice-marker { font-size: 11px; color: var(--dtc-success); white-space: nowrap; }
+/* ── 判例列表 ──────────────────────────────────────────── */
+.dtc-precedents { display: flex; flex-direction: column; gap: 6px; }
+.dtc-precedent { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--dtc-border); background: var(--dtc-surface); font-size: 11.5px; }
+.dtc-precedent.is-reworked { border-color: var(--dtc-danger); }
+.dtc-precedent-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dtc-precedent-head code { font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dtc-faint); }
+.dtc-precedent-title { font-size: 12px; font-weight: 550; color: var(--dtc-ink); overflow-wrap: anywhere; }
+.dtc-precedent-meta { display: flex; gap: 10px; flex-wrap: wrap; color: var(--dtc-muted); }
+.dtc-precedent-at { font-size: 10px; color: var(--dtc-faint); margin-left: auto; }
+.dtc-precedent.is-reworked .dtc-precedent-title,
+.dtc-precedent.is-reworked .dtc-precedent-meta,
+.dtc-precedent.is-reworked .dtc-precedent-head code { color: var(--dtc-danger); }
+.dtc-precedent-note { color: var(--dtc-danger); }
+.dtc-divider { height: 1px; background: var(--dtc-line); margin: 6px 0 2px; }
+.dtc-textarea.is-short { min-height: 120px; }
 `
 
 /** 注入样式；返回卸载函数。重复调用只会留一个 <style>。 */

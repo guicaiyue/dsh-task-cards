@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { actOnCard, createCard, fetchCards } from '../api'
+import { actOnCard, adopt, createCard, fetchCards, markReworked } from '../api'
 import type { ActionResult, Card, CardActionName } from '../types'
 
 export interface CardsState {
@@ -27,12 +27,19 @@ interface ActionContext {
   reload: (soft?: boolean) => Promise<void>
 }
 
+/** 票拟的两个动作各有专用封装（采纳带 0 起序号，返工原因走 option）。 */
+function requestAction(card: Card, action: CardActionName, option?: string) {
+  if (action === 'adopt') return adopt(card.id, Number(option ?? '0'))
+  if (action === 'mark-reworked') return markReworked(card.id, option)
+  return actOnCard(card.id, action, option)
+}
+
 /** 动作请求 + 本地状态更新：删除直接摘掉，其它用宿主回的卡替换。 */
 async function performCardAction(context: ActionContext): Promise<ActionResult> {
   const { card, action, option, setCards, setError, reload } = context
   setError('')
   try {
-    const body = await actOnCard(card.id, action, option)
+    const body = await requestAction(card, action, option)
     if (action === 'delete') setCards((prev) => prev.filter((item) => item.id !== card.id))
     else if (body.card)
       setCards((prev) => prev.map((item) => (item.id === card.id ? (body.card as Card) : item)))

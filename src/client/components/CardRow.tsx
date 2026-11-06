@@ -1,8 +1,9 @@
-// 一行卡片：左侧色轨标 kind，中间标题/明细/元信息，右侧动作。
+// 一行卡片：左侧色轨标 kind，中间标题/明细/元信息/票拟，右侧动作。
 // 同一行既能在会话树里出现，也能单独使用，所以只接最小 props。
 
 import { isClosed } from '../../shared/state'
 import type { Card, Translate } from '../types'
+import { AdviceChip } from './AdviceChip'
 import { CardActions, type CardHandlers } from './CardActions'
 import { CardMeta } from './CardMeta'
 import { QuestionOptions } from './QuestionOptions'
@@ -12,9 +13,10 @@ interface Props extends CardHandlers {
   card: Card
   busy: boolean
   onAnswer: (card: Card, option: string) => void
+  onRedecide: (card: Card) => void
 }
 
-export function CardRow({ t, card, busy, onAction, onAnswer, onDetail }: Props) {
+export function CardRow({ t, card, busy, onAction, onAnswer, onDetail, onRedecide }: Props) {
   const isDecision = card.kind === 'decision'
   const isAuto = card.kind === 'auto'
   const closed = isClosed(card.status)
@@ -26,6 +28,9 @@ export function CardRow({ t, card, busy, onAction, onAnswer, onDetail }: Props) 
         <div className="dtc-text">{card.title}</div>
         {card.detail ? <div className="dtc-detail">{card.detail}</div> : null}
         <CardMeta t={t} card={card} closed={closed} />
+        {isDecision && (card.advice || !closed) ? (
+          <AdviceChip t={t} card={card} busy={busy} onRedecide={onRedecide} />
+        ) : null}
         {card.interaction === 'question' && !closed ? (
           <QuestionOptions t={t} card={card} busy={busy} onAnswer={onAnswer} />
         ) : null}

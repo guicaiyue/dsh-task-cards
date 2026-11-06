@@ -37,7 +37,8 @@ interface Props {
   onAdd: () => void
   onAction: (card: Card, action: CardActionName, option?: string) => void
   onAnswer: (card: Card, option: string) => void
-  onDetail: (target: { sessionId: string; title: string }) => void
+  onRedecide: (card: Card) => void
+  onDetail: (target: { sessionId: string; title: string; card?: Card | null }) => void
   onOpenSession: (sessionId: string) => void
 }
 
@@ -52,6 +53,7 @@ export function CardsTab({
   onAdd,
   onAction,
   onAnswer,
+  onRedecide,
   onDetail,
   onOpenSession,
 }: Props) {
@@ -88,6 +90,7 @@ export function CardsTab({
               onOpenSession={onOpenSession}
               onAction={onAction}
               onAnswer={onAnswer}
+              onRedecide={onRedecide}
             />
           ))}
         </div>
