@@ -62,6 +62,12 @@ pnpm verify       # lint → typecheck → test → build → ABI → 代码预�
 2. 输入构造在 `observer/payload.ts`（纯函数，先加测试再加逻辑）。
 3. 会话建立 / 投递在 `observer/session.ts`；别把业务判断塞进去。
 
+**改决策代理人（票拟 / 判例）**
+1. 提示词默认值在 `src/host/decision/defaults.ts`——它写的是用户本人的决策画像，改它等于改他的决策规则，必须在提交信息里说明理由。
+2. 输入构造在 `decision/input.ts`、解析在 `decision/parse.ts`，都是纯函数：先加测试再加逻辑。
+3. 判例只由用户的动作产生（作答 / 完成 / 忽略），`outcome=reworked` 的判例**不许进决策输入**。
+4. 代理人只做两件写操作：写 `card.advice`、把错标的 `decision` 降为 `info`。别让它执行 action 或自动判 `valid`。
+
 ## 坑（都已踩过，别再踩）
 
 | 坑 | 正确做法 |
@@ -81,6 +87,7 @@ pnpm verify       # lint → typecheck → test → build → ABI → 代码预�
 - [宿主 ABI](docs/host-abi.md)：用到的 DSH 能力、缺失时的行为、升级核对清单。
 - [命令](docs/commands.md)：脚本、安装、数据文件。
 - [验收](docs/verification.md)：浏览器验收清单与排障表。
+- [决策代理人](docs/decision-agent.md)：票拟流水线、八条决策判据的来源、判例与返工失效。
 - [ADR](docs/adr/)：为什么是 tsdown / vitest / Biome / lefthook / zod / 结构化 ABI 类型。
 
 ## 提交前自检

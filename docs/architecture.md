@@ -14,13 +14,14 @@ dsh-task-cards/
 │   │   ├── host-api.ts   宿主 ABI 的唯一接触面（ctx.* 只在这里出现）
 │   │   ├── cards/        卡的存储、默认设置与提示词
 │   │   ├── observer/     观察者：触发 → 建会话 → 解析 JSON → 落卡
+│   │   ├── decision/     决策代理人：票拟输入 → 无工具会话 → advice / 判例
 │   │   ├── question/     阻塞式提问 ↔ 卡片作答
 │   │   ├── scanner/      到点执行 auto 卡
 │   │   ├── policy/       工具 / 技能白名单
-│   │   └── routes/       9 个路由，一个端点一个文件
+│   │   └── routes/       10 个路由，一个端点一个文件
 │   └── client/           客户端侧（浏览器）：面板 UI
 │       ├── index.tsx     注册侧栏入口、主面板、字典、样式
-│       ├── components/   16 个组件（渲染）
+│       ├── components/   21 个组件（渲染）
 │       ├── hooks/        8 个 hook（数据与副作用）
 │       ├── api.ts        所有 fetch 在这里
 │       ├── locale/       中英字典
@@ -48,6 +49,27 @@ extractJson → coerceCards → Store.create（落盘 cards.json）
 ```
 
 失败重试一次；两次都坏就写一条 `records.json`（`status: invalid`），面板与 `/inspect` 能看到。
+
+**①b 卡 → 票拟 → 判例（决策阶段）**
+
+```
+Observer 建完这一批卡（onCardsCreated，不阻塞 records.add）
+   ▼
+Decision.enqueueCards → 串行：本次新建的卡 + 判例（剔除 reworked、按 limit 截断）
+   ▼
+runDecisionAttempt：另一个无工具会话（preset=task-cards-decision，系统提示词 = 决策画像）
+   │  prompt(<cards>/<precedents>, signal) → 等 idle
+   ▼
+parseAdvice（容错 JSON）→ applyAdvice
+   ├─ 写 card.advice（事件 advised）
+   └─ 只允许 decision → info 的车道纠正（事件 lane:info）
+   ▼
+面板：行内 chip / 详情里的方案对照 → 采纳（/action adopt）或返工标记（mark-reworked）
+   ▼
+用户的决定 → precedents.json（作答 / 完成 / 忽略 / 采纳 / 聊天作答）
+```
+
+决策会话也有自己的 `Waiter`（`wire.ts` 的 `routeDecisionEvents`），触发侧显式跳过 `card-dec-` 前缀，避免票拟 JSON 反过来被观察成卡。
 
 **② 面板 → 宿主**
 

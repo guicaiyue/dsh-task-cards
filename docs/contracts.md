@@ -31,6 +31,7 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | `interaction` | `reply` / `question` | 普通回合记录 / 模型提问把对话卡住了 |
 | `question` | `{sessionId?, callId?, items[]}` 或 `null` | 问题卡的选项，面板据此作答 |
 | `origin` | `{sessionId?, turn?, observerSessionId?}` | 追溯：哪次会话、第几轮、哪个观察者会话 |
+| `advice` | `{verdict, summary, options[], basis, precedentIds[], confidence, question, lane, applied, at}` 或 `null` | 决策代理人的票拟；见 [决策代理人](decision-agent.md) |
 | `events` | `[{at, type, via?}]` | 追加式审计：created / completed / answered / auto-executed … |
 
 **状态机**（`src/shared/state.ts`）
@@ -42,6 +43,8 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | `dismiss` | `dismissed` | `dismissed` |
 | `reopen` | `open` | `reopened` |
 | `answer` | `done` | `answered` |
+| `adopt` | `done`（用方案里的 `answer` 走 `answer` 那条路） | `answered` |
+| `mark-reworked` | 不变（判例改 `reworked`） | `reworked` |
 | `run-now` / 扫描器执行成功 | `done` | `auto-executed` |
 | 扫描器执行失败 | `open` + `lastError` | `auto-failed` |
 | `delete` | 移除 | — |
@@ -53,7 +56,26 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 ## 设置（`SettingsSchema`）
 
 `systemPrompt`、`provider`、`model`、`enabled`、`minReplyChars`、`includeSubagents`、`maxInputBytes`、`timeoutMs`。
-默认值在 `src/host/cards/defaults.ts`；`systemPrompt` 的默认文本就是分类契约（kind 的判定标准），改它等于改分类行为。
+决策阶段另有 `decisionEnabled`、`decisionPrompt`、`decisionProvider`、`decisionModel`、`decisionPrecedentLimit`。
+默认值在 `src/host/cards/defaults.ts`；`systemPrompt` 的默认文本就是分类契约（kind 的判定标准），改它等于改分类行为；`decisionPrompt` 为空的含义是「用内置的决策画像」（`src/host/decision/defaults.ts`），不是「没有提示词」。
+
+## 票拟与判例（`AdviceSchema` / `PrecedentSchema`）
+
+```
+card.advice = { verdict: approve|reject|modify|wait, summary, confidence, question,
+                options: [{ name, cost, gain, worst, answer, verdict }]  // 最多 3 个
+                basis, precedentIds[], lane, applied, at }
+```
+
+- `verdict`：`approve` 照办 / `reject` 不该做 / `modify` 改后批 / `wait` 现在别决（配 `question` 追问）。
+- `applied`：车道纠正是否真的落盘。代理人只允许把 `decision` 降成 `info`（可逆、不需要人动手），反向不落盘。
+- `precedentIds`：只能引用输入里真实存在的判例编号；没有同类就写「无同类判例」。
+
+```
+precedent = { id, at, cardId, title, question, choice, outcome: unknown|valid|reworked, note, keywords[] }
+```
+
+判例只由人的动作产生（作答 / 完成 / 忽略 / 采纳方案 / 聊天里作答）。`outcome=reworked` 的判例**不进决策输入**——用户的硬规则。数据在 `precedents.json`，上限 500 条。
 
 ## 策略（`PolicySchema`）
 
@@ -64,7 +86,7 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | 方法 | 路径 | 用途 |
 | :-- | :-- | :-- |
 | GET/POST | `/cards` | 列表 / 建卡 |
-| POST | `/action` | complete / acknowledge / dismiss / reopen / delete / run-now / answer |
+| POST | `/action` | complete / acknowledge / dismiss / reopen / delete / run-now / answer / adopt / mark-reworked |
 | GET/POST | `/settings` | 观察者设置 |
 | GET | `/models` | 可选模型目录 |
 | GET | `/inspect` | 诊断：请求头里的工具与最近事件（`?id=&events=1`） |
@@ -72,6 +94,7 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | GET | `/workspaces` | 诊断：工作区里挂了哪些会话 |
 | GET | `/timeline` | 详情弹窗的时间线（`?id=`） |
 | GET | `/titles` | 批量取会话标题（`?ids=a,b`） |
+| GET/POST | `/decisions` | 判例列表 / `mark-reworked`、`redecide`（对某张卡重出票拟） |
 | POST | `/presence` | 面板心跳（宿主未注册 = 静默忽略，客户端不依赖它） |
 
 错误统一为 `{ok:false, code, error}`：`400`（业务错误，code 稳定：`EMPTY_TITLE` `TITLE_TOO_LONG` `NOT_FOUND` `BAD_STATE` `MISSING_ID` `BAD_JSON` `BODY_TOO_LARGE` …）、`403`（跨站/非回环）、`405`（方法不对）、`500`（内部错误，带 `detail`）。
@@ -84,4 +107,5 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 
 - `tests/shared/contract.test.ts`：宿主写出的卡、观察者吐出的草稿都要能被 schema 解析；旧数据缺字段靠默认值补齐；非法枚举被拒；默认设置/策略本身合法；动作映射、分组不重不漏；客户端 API 前缀 = 宿主前缀。
 - `tests/client/abi.test.ts`：中英字典键必须一致（切语言不掉文案）。
+- 决策阶段的规则与判例失效条件见 [决策代理人](decision-agent.md)。
 - CI 上的 `pnpm verify` 串起 lint / typecheck / test / build / ABI / budget，任何一条断了都进不了 main。

@@ -11,6 +11,7 @@
 - **回合结束自动记卡**：任何顶层会话一轮结束（`agent/status` → idle），插件另起一个**没有工具**的观察者会话，把最后那段回复整理成 JSON 卡。
 - **观察者不碰原会话**：只读事件流，不往原会话里投任何东西。
 - **三种卡**：`decision` 要我拍板、`info` 要我知晓、`auto` 可自动处理（带 `action`）。分类由系统提示词决定。
+- **决策代理人出票拟**：卡建好后另跑一个无工具会话，只给它卡和你过去的同类决定（判例）。它把错标成「要我决策」的事实卡降级为「要我知晓」，其余每张给 2–3 个方案（成本 / 长期收益 / 最坏情况），点一下采纳就等于批红。它不执行、不删改、不替你拍板——见 [docs/decision-agent.md](docs/decision-agent.md)。
 - **观察者的输入**：最近三轮「用户输入 + 模型最终输出」，不是只看最后一句回复。
 - **自动执行**：`src/host/scanner/` 每 30 秒扫到点的 `auto` 卡，在原会话里替用户补一句话（429 → 10 分钟后重试，400 → 立即重试）。成功收卡，失败退回「要我知晓」并记原因。
 - **提示词可视化编辑**：保存后下一轮生效（不用重启）。
@@ -44,13 +45,14 @@
 | `src/shared/` | 两端共用 | zod 契约、路由常量、状态机、ABI 常量 |
 | `src/host/index.ts` · `wire.ts` | 宿主 | 入口与装配 |
 | `src/host/observer/` | 宿主 | 观察者流水线 + 只注册提示词的 preset 插件 |
+| `src/host/decision/` | 宿主 | 决策代理人：票拟输入/解析/执行/落卡 + 判例 |
 | `src/host/routes/` | 宿主 | 9 个后端端点，一个端点一个文件 |
 | `src/host/cards/` `scanner/` `policy/` `question/` | 宿主 | 存储、定时执行、白名单、提问回填 |
 | `src/client/` | 浏览器 | 面板：components / hooks / locale / api / styles |
 | `lib/` | 构建产物 | `pnpm build` 生成；`lib/index.js`、`lib/observer-prompt.js`、`lib/client.js` |
 | `tests/` | Node | 70 个用例：契约、边界、存储、路由、观察者输入、卡片排序、面板渲染、bundle ABI |
 
-数据在 `$DSH_HOME/dsh-task-cards/`：`cards.json`、`settings.json`、`policy.json`、`records.json`、`workspace/`。
+数据在 `$DSH_HOME/dsh-task-cards/`：`cards.json`、`settings.json`、`policy.json`、`records.json`、`precedents.json`（你的判例）、`workspace/`。
 
 ## 挂进 profile
 
