@@ -40,4 +40,11 @@ export const DEFAULT_SETTINGS: Settings = {
   maxInputBytes: 16000,
   /** 单次观察者调用超时。 */
   timeoutMs: 60000,
+  // 决策阶段：卡建好后另跑一个只看卡与判例、不出手的会话。
+  // decisionPrompt 为空时用 host/decision/defaults.ts 里的默认画像。
+  decisionEnabled: true,
+  decisionPrompt: '',
+  decisionProvider: '',
+  decisionModel: '',
+  decisionPrecedentLimit: 30,
 }

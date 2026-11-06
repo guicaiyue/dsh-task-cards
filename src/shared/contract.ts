@@ -14,7 +14,14 @@ export const CARD_INTERACTIONS = ['reply', 'question'] as const
 export const CARD_ACTION_TYPES = ['prompt', 'retry'] as const
 export const ANSWER_VIAS = ['card', 'chat'] as const
 
+/** 决策代理人对一张卡给的结论：照办 / 不该做 / 换个做法 / 现在别决。 */
+export const ADVICE_VERDICTS = ['approve', 'reject', 'modify', 'wait'] as const
+/** 判例的后果：还没验收 / 验收通过 / 后来返工了（返工过的判例不再当准绳）。 */
+export const PRECEDENT_OUTCOMES = ['unknown', 'valid', 'reworked'] as const
+
 export type CardKind = (typeof CARD_KINDS)[number]
+export type AdviceVerdict = (typeof ADVICE_VERDICTS)[number]
+export type PrecedentOutcome = (typeof PRECEDENT_OUTCOMES)[number]
 export type CardSeverity = (typeof CARD_SEVERITIES)[number]
 export type CardStatus = (typeof CARD_STATUSES)[number]
 export type CardSource = (typeof CARD_SOURCES)[number]
@@ -62,6 +69,61 @@ export const CardEventSchema = z.object({
 })
 export type CardEvent = z.infer<typeof CardEventSchema>
 
+/**
+ * 票拟里的一个方案。四栏是用户批红时要对照的东西：
+ * 成本、长期收益（以后每次少走几步）、最坏情况，以及采纳后回给原会话的那句话。
+ */
+export const AdviceOptionSchema = z.object({
+  name: z.string().min(1),
+  cost: z.string().default(''),
+  gain: z.string().default(''),
+  worst: z.string().default(''),
+  /** 采纳后替用户发回原会话的话，必须能独立成立。 */
+  answer: z.string().default(''),
+  verdict: z.enum(ADVICE_VERDICTS).default('modify'),
+})
+export type AdviceOption = z.infer<typeof AdviceOptionSchema>
+
+/** 决策代理人对一张卡出的票拟：结论 + 2–3 个方案 + 依据（含判例编号）。 */
+export const AdviceSchema = z.object({
+  verdict: z.enum(ADVICE_VERDICTS).default('wait'),
+  summary: z.string().default(''),
+  options: z.array(AdviceOptionSchema).default([]),
+  /** 一句话依据；引用判例时写编号，没有同类判例写「无同类判例」。 */
+  basis: z.string().default(''),
+  precedentIds: z.array(z.string()).default([]),
+  confidence: z.enum(CARD_SEVERITIES).default('normal'),
+  /** verdict=wait 时的一个追问，用来补上缺的那条信息。 */
+  question: z.string().default(''),
+  /** 它判定的车道；与卡的 kind 不同时说明原分类被纠正。 */
+  lane: z.enum(CARD_KINDS).default('decision'),
+  /** 车道纠正是否已自动落盘（只允许向 info 方向纠正）。 */
+  applied: z.boolean().default(false),
+  at: z.number(),
+})
+export type Advice = z.infer<typeof AdviceSchema>
+
+/**
+ * 判例：用户过去同类决定的一条记录。返工过的判例（outcome=reworked）
+ * 不再当准绳——这是用户的硬规则，不是建议。
+ */
+export const PrecedentSchema = z.object({
+  id: z.string().min(1),
+  at: z.number(),
+  cardId: z.string().default(''),
+  /** 当时要定的事。 */
+  title: z.string().default(''),
+  /** 当时的问法与判据，供同类匹配。 */
+  question: z.string().default(''),
+  /** 用户当时怎么定的（原话或采纳的方案名）。 */
+  choice: z.string().default(''),
+  outcome: z.enum(PRECEDENT_OUTCOMES).default('unknown'),
+  /** 返工原因，只在 outcome=reworked 时有值。 */
+  note: z.string().default(''),
+  keywords: z.array(z.string()).default([]),
+})
+export type Precedent = z.infer<typeof PrecedentSchema>
+
 /** 一张卡。detail 之外的字段都有默认值，旧数据也能解析。 */
 export const CardSchema = z.object({
   id: z.string().min(1),
@@ -76,6 +138,8 @@ export const CardSchema = z.object({
   interaction: z.enum(CARD_INTERACTIONS).default('reply'),
   question: QuestionSchema.nullable().default(null),
   origin: CardOriginSchema.nullable().default(null),
+  /** 决策 agent 出的票拟；没跑过或没结论时为 null。 */
+  advice: AdviceSchema.nullable().default(null),
   createdAt: z.number(),
   updatedAt: z.number(),
   executedAt: z.number().optional(),
@@ -107,6 +171,14 @@ export const SettingsSchema = z.object({
   includeSubagents: z.boolean().default(false),
   maxInputBytes: z.number().int().positive().default(16000),
   timeoutMs: z.number().int().positive().default(60000),
+  /** 决策阶段：卡建好后另跑一个「只出票拟、不动手」的会话。 */
+  decisionEnabled: z.boolean().default(true),
+  /** 决策代理人的系统提示词（用户的决策画像写在里面），面板可编辑。 */
+  decisionPrompt: z.string().default(''),
+  decisionProvider: z.string().default(''),
+  decisionModel: z.string().default(''),
+  /** 一次票拟最多带几条判例进输入。 */
+  decisionPrecedentLimit: z.number().int().nonnegative().default(30),
 })
 export type Settings = z.infer<typeof SettingsSchema>
 

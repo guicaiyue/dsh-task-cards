@@ -1,14 +1,7 @@
-// 三份本机数据：卡、观察者设置、调用记录。
+// 四份本机数据：卡、观察者设置、调用记录、判例。
 //
-// 都用「一个 JSON 文件 + 原子写」。不接 storageDomain：那要 domain spec、
-// zod schema 和 backend route 三样东西，现阶段换来的是零收益的复杂度。
-//
+// 落盘底座（路径 / JsonDoc / 短 id / 业务错误）在 ./doc.ts；这里只放领域读写。
 // 落点与其它插件一致：$DSH_HOME/dsh-task-cards/*.json
-
-import fs from 'node:fs'
-import fsp from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
 
 import type {
   Card,
@@ -19,84 +12,20 @@ import type {
   Settings,
 } from '../../shared/contract'
 import { DEFAULT_SETTINGS } from './defaults'
+import { DATA_FILE, JsonDoc, nextId, RECORDS_FILE, SETTINGS_FILE, StoreError } from './doc'
 
-const DSH_HOME = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
-export const DATA_DIR = path.join(DSH_HOME, 'dsh-task-cards')
-export const DATA_FILE = path.join(DATA_DIR, 'cards.json')
-export const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json')
-export const RECORDS_FILE = path.join(DATA_DIR, 'records.json')
+export {
+  DATA_DIR,
+  DATA_FILE,
+  JsonDoc,
+  PRECEDENTS_FILE,
+  RECORDS_FILE,
+  SETTINGS_FILE,
+  StoreError,
+} from './doc'
 
 export const MAX_TITLE = 200
 const STATES = new Set(['todo', 'done'])
-
-/** 带稳定 code 的业务错误：路由层据此回 400 而不是 500。 */
-export class StoreError extends Error {
-  readonly code: string
-
-  constructor(code: string, message: string) {
-    super(message)
-    this.code = code
-  }
-}
-
-/** 一个 JSON 文档：懒加载、原子写、写失败抛出去。 */
-class JsonDoc<T> {
-  readonly file: string
-  #value: T | undefined
-  #chain: Promise<void> = Promise.resolve()
-  #warning: string | null = null
-  #fallback: () => T
-
-  constructor(file: string, fallback: () => T) {
-    this.file = file
-    this.#fallback = fallback
-  }
-
-  get warning(): string | null {
-    return this.#warning
-  }
-
-  read(): T {
-    if (this.#value !== undefined) return this.#value
-    try {
-      const raw = fs.readFileSync(this.file, 'utf8')
-      this.#value = JSON.parse(raw) as T
-    } catch (err) {
-      if (err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
-        this.#value = this.#fallback()
-      } else {
-        // 坏文件不静默丢：挪到旁边，界面能看到 warning。
-        this.#warning = `数据文件无法解析，已挪到旁边：${(err as Error)?.message || String(err)}`
-        this.#value = this.#fallback()
-        try {
-          fs.renameSync(this.file, `${this.file}.bad-${Date.now()}`)
-        } catch {
-          /* 挪不动也不挡开工 */
-        }
-      }
-    }
-    return this.#value as T
-  }
-
-  write(value: T): Promise<void> {
-    this.#value = value
-    const run = async () => {
-      await fsp.mkdir(path.dirname(this.file), { recursive: true })
-      const tmp = `${this.file}.tmp`
-      await fsp.writeFile(tmp, JSON.stringify(value, null, 2), 'utf8')
-      await fsp.rename(tmp, this.file)
-    }
-    const next = this.#chain.then(run, run)
-    this.#chain = next.catch(() => {})
-    return next
-  }
-}
-
-let counter = 0
-function nextId(prefix: string): string {
-  counter = (counter + 1) % 1e6
-  return `${prefix}-${Date.now().toString(36)}-${counter.toString(36)}${Math.random().toString(36).slice(2, 6)}`
-}
 
 /** 磁盘上是数组（新）或 {cards: [...]}（旧）：两种都认。 */
 type StoredCards = Card[] | { cards: Card[] }
@@ -180,6 +109,7 @@ export class Store {
       interaction: extra.interaction === 'question' ? 'question' : 'reply',
       question: (extra.question as Card['question']) ?? null,
       origin: (extra.origin as Card['origin']) ?? null,
+      advice: null,
       createdAt: now,
       updatedAt: now,
       events: [{ at: now, type: 'created', via: extra.source === 'agent' ? 'agent' : 'human' }],
@@ -261,6 +191,16 @@ export class SettingsStore {
       next.maxInputBytes = Math.max(200, Math.trunc(patch.maxInputBytes))
     if (typeof patch.timeoutMs === 'number' && Number.isFinite(patch.timeoutMs))
       next.timeoutMs = Math.max(1000, Math.trunc(patch.timeoutMs))
+    // 决策代理人：面板里可改开关、提示词、模型与判例条数。
+    if (typeof patch.decisionEnabled === 'boolean') next.decisionEnabled = patch.decisionEnabled
+    if (typeof patch.decisionPrompt === 'string') next.decisionPrompt = patch.decisionPrompt
+    if (typeof patch.decisionProvider === 'string') next.decisionProvider = patch.decisionProvider
+    if (typeof patch.decisionModel === 'string') next.decisionModel = patch.decisionModel
+    if (
+      typeof patch.decisionPrecedentLimit === 'number' &&
+      Number.isFinite(patch.decisionPrecedentLimit)
+    )
+      next.decisionPrecedentLimit = Math.max(0, Math.trunc(patch.decisionPrecedentLimit))
     await this.#doc.write(next)
     return next
   }
@@ -296,3 +236,6 @@ export class RecordStore {
     return entry
   }
 }
+
+/** 判例库在 ./precedents.ts（JsonDoc 复用）；调用方仍然从 store 取。 */
+export { type PrecedentInput, PrecedentStore } from './precedents'
