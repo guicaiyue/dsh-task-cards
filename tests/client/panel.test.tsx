@@ -5,8 +5,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Panel } from '../../src/client/components/Panel'
+import { READ_DWELL_MS } from '../../src/client/hooks/useReadOnScreen'
 import { DICT } from '../../src/client/locale'
 import type { Advice, Card, ObserverRecord, Precedent, Settings } from '../../src/client/types'
+import { intersectionObserverFor } from './setup'
 
 const zh = DICT.zh as Record<string, string>
 
@@ -34,6 +36,7 @@ function card(overrides: Partial<Card> = {}): Card {
     origin: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    silent: false,
     events: [],
     ...overrides,
   } as Card
@@ -54,6 +57,7 @@ const SETTINGS: Settings = {
   decisionModel: '',
   decisionPrecedentLimit: 30,
   decisionAutoApply: true,
+  autoApproveDiagnostics: false,
 }
 
 /** 一张完整的票拟：两个方案、一条被引用的判例，推荐第一个且可自动执行。 */
@@ -318,23 +322,92 @@ describe('面板', () => {
     expect(texts[texts.length - 1]).toBe('已经处理完的决策')
   })
 
-  it('观察者的通知卡没有「知道了 / 忽略」，渲染即自动已读', async () => {
+  it('观察者的通知卡没有「知道了 / 忽略」，在视口里停满 2 秒才自动已读', async () => {
     const { calls } = stubApi({
       cards: [card({ id: 'c-n', kind: 'info', source: 'agent', title: '发布完成' })],
     })
-    render(<Panel t={translate} />)
+    const { container } = render(<Panel t={translate} />)
     await screen.findByText('发布完成')
     expect(screen.queryByText(zh.know as string)).toBeNull()
     expect(screen.queryByText(zh.dismiss as string)).toBeNull()
-    await waitFor(() => {
-      const ack = calls.find(
-        (item) =>
-          item.url.endsWith('/api/action') &&
-          (item.body as { action?: string } | undefined)?.action === 'acknowledge',
-      )
-      expect((ack?.body as { id?: string } | undefined)?.id).toBe('c-n')
-    })
+
+    // 渲染出来不算看过：要真的在视口里。
+    const row = container.querySelector('.dtc-card')
+    expect(row).toBeTruthy()
+    intersectionObserverFor(row as Element).enter()
+
+    await waitFor(
+      () => {
+        const ack = calls.find(
+          (item) =>
+            item.url.endsWith('/api/action') &&
+            (item.body as { action?: string } | undefined)?.action === 'acknowledge',
+        )
+        expect((ack?.body as { id?: string } | undefined)?.id).toBe('c-n')
+      },
+      { timeout: READ_DWELL_MS + 2000 },
+    )
   })
+
+  it('扫一眼就划走不算看过：不足 2 秒离开视口，不自动已读', async () => {
+    const { calls } = stubApi({
+      cards: [card({ id: 'c-brief', kind: 'info', source: 'agent', title: '一闪而过' })],
+    })
+    const { container } = render(<Panel t={translate} />)
+    await screen.findByText('一闪而过')
+
+    const observer = intersectionObserverFor(container.querySelector('.dtc-card') as Element)
+    observer.enter()
+    await new Promise((resolve) => setTimeout(resolve, READ_DWELL_MS / 2))
+    observer.leave()
+    await new Promise((resolve) => setTimeout(resolve, READ_DWELL_MS))
+
+    expect(calls.some((item) => item.url.endsWith('/api/action'))).toBe(false)
+  }, 10_000)
+
+  it('页面不可见时不自动已读', async () => {
+    const { calls } = stubApi({
+      cards: [card({ id: 'c-hidden', kind: 'info', source: 'agent', title: '后台的通知' })],
+    })
+    const { container } = render(<Panel t={translate} />)
+    await screen.findByText('后台的通知')
+
+    const descriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState')
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    })
+    try {
+      intersectionObserverFor(container.querySelector('.dtc-card') as Element).enter()
+      await new Promise((resolve) => setTimeout(resolve, READ_DWELL_MS + 400))
+      expect(calls.some((item) => item.url.endsWith('/api/action'))).toBe(false)
+    } finally {
+      if (descriptor) Object.defineProperty(Document.prototype, 'visibilityState', descriptor)
+    }
+  }, 10_000)
+
+  it('建卡时就判定看过的通知带「已看过」并免打扰，不再自动发请求', async () => {
+    const { calls } = stubApi({
+      cards: [
+        card({
+          id: 'c-seen',
+          kind: 'info',
+          source: 'agent',
+          status: 'acknowledged',
+          silent: true,
+          title: '刚才已经看过的结果',
+        }),
+      ],
+    })
+    const { container } = render(<Panel t={translate} />)
+    await screen.findByText('刚才已经看过的结果')
+    expect(screen.getByText(zh.silentChip as string)).toBeTruthy()
+
+    // 免打扰卡根本不参与「看到即已读」：连视口观察器都不挂。
+    expect(() => intersectionObserverFor(container.querySelector('.dtc-card') as Element)).toThrow()
+    await new Promise((resolve) => setTimeout(resolve, READ_DWELL_MS / 2))
+    expect(calls.some((item) => item.url.endsWith('/api/action'))).toBe(false)
+  }, 10_000)
 
   it('人手写的知晓卡保留「知道了」，不会自动已读', async () => {
     const { calls } = stubApi({

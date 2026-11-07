@@ -13,9 +13,12 @@ import type { HostRuntime, Log } from '../host-api'
 import { Waiter } from '../observer/waiter'
 import { applyAdvice } from './apply'
 import { autoApplyAdvice } from './autoapply'
+import { resolveClarification } from './clarify'
 import { buildDecisionInput } from './input'
 import { type AdviceDraft, parseAdvice } from './parse'
+import { type DecisionPreview, previewDecision } from './preview'
 import { addDecisionRecord, type DecisionRecordStatus } from './record'
+import { guardVagueReference } from './reference'
 import { type DecisionAttempt, runDecisionAttempt } from './session'
 
 export interface DecisionRunResult {
@@ -122,8 +125,11 @@ export class Decision {
       this.#precedents.list(config.decisionPrecedentLimit),
       config.decisionPrecedentLimit,
       config.maxInputBytes,
+      (id) => this.#cards.find(id),
     )
     const knownIds = new Set(cards.map((card) => card.id))
+    // 一张卡约 10-15s；批量时按张数放大，避免 3 张就撞 60s 超时。
+    const timeoutMs = Math.min(180000, config.timeoutMs + Math.max(0, cards.length - 1) * 30000)
     let last: DecisionAttempt | null = null
     let parseFailed = false
     for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -134,6 +140,7 @@ export class Decision {
         attempt,
         waiter: this.waiter,
         log: this.#log,
+        timeoutMs,
       })
       parseFailed = false
       const drafts = last.kind === 'ok' ? parseAdvice(last.text, knownIds) : null
@@ -151,6 +158,23 @@ export class Decision {
       startedAt,
       userText,
     })
+  }
+
+  /** 只读预演：与真实执行共用提示词/输入，但不写卡、不投递、不记执行记录。 */
+  async preview(cardIds: string[]): Promise<DecisionPreview> {
+    const ctx = this.#getCtx()
+    if (!ctx) return { ok: false, cards: [], drafts: [], reason: '宿主未就绪' }
+    return previewDecision(
+      {
+        ctx,
+        config: this.#settings.get(),
+        cards: this.#cards,
+        precedents: this.#precedents,
+        waiter: this.waiter,
+        log: this.#log,
+      },
+      cardIds,
+    )
   }
 
   /** 一张卡都没跑（开关关着 / 没有待决策的卡）：记一条空记录，不动任何卡。 */
@@ -182,7 +206,8 @@ export class Decision {
       const card = byId.get(draft.cardId)
       if (!card) continue
       try {
-        const result = await applyAdvice(this.#cards, card, draft)
+        const resolved = resolveClarification(card, guardVagueReference(card, draft))
+        const result = await applyAdvice(this.#cards, card, resolved)
         advised += 1
         if (result.corrected) corrected += 1
         const auto = await autoApplyAdvice(this.#autoDeps(allowed), result.card)
@@ -213,6 +238,7 @@ export class Decision {
       getCtx: this.#getCtx,
       log: (line: string) => this.#log(`自动执行：${line}`),
       allowed,
+      diagnostics: this.#settings.get().autoApproveDiagnostics,
     }
   }
 
@@ -267,3 +293,5 @@ export class Decision {
 function skip(reason: string): DecisionRunResult {
   return { ok: false, advised: 0, applied: 0, attempts: 0, sessionId: '', reason }
 }
+
+/** 面板当时打开着某张卡：澄清卡可以直接用它作为答案，不再问用户。 */

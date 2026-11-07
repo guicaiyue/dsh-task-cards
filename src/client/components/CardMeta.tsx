@@ -22,6 +22,7 @@ export function CardMeta({ t, card, closed }: Props) {
     <div className="dtc-meta">
       <span className={`dtc-chip${chipClass}`}>{kindLabel}</span>
       <span>{card.source === 'agent' ? t('fromAgent') : t('fromHuman')}</span>
+      {card.silent ? <span className="dtc-chip is-silent">{t('silentChip')}</span> : null}
       <span>{timeLabel(closed ? card.updatedAt : card.createdAt)}</span>
       {card.kind === 'auto' && card.dueAt && !closed ? (
         <span>{t('dueAt', { time: timeLabel(card.dueAt) })}</span>

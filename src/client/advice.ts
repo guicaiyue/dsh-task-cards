@@ -3,6 +3,7 @@
 // 词条全部在 locale/{zh,en}.ts（值必须是字符串）；这里只拼键名，不写中文。
 
 import type {
+  Advice,
   AdviceVerdict,
   Card,
   CardKind,
@@ -48,6 +49,33 @@ export function outcomeLabel(t: Translate, outcome: PrecedentOutcome): string {
 
 export function laneLabel(t: Translate, lane: CardKind): string {
   return t(`lane_${lane}`)
+}
+
+/** 影响等级 → 人话：read / write-code / destructive / external / spend。 */
+export function effectLabel(t: Translate, effect?: string): string {
+  return t(`effect_${effect || 'write-code'}`)
+}
+
+/** 自动执行被拦的原因 → 人话；未知原因原样显示，方便排查。 */
+export function blockedReasonLabel(t: Translate, reason: string): string {
+  if (reason.startsWith('missing-capability:')) {
+    return t('blockedMissing', { cap: reason.slice('missing-capability:'.length) })
+  }
+  if (reason === 'deictic-without-target') return t('blockedDeictic')
+  if (reason.startsWith('effect:'))
+    return t('blockedEffect', { effect: effectLabel(t, reason.slice(7)) })
+  return t('blockedGeneric', { reason })
+}
+
+/** 不可逆 / 对外 / 花钱：必须让用户显式确认，不能一个误点就过。 */
+export function needsExplicitConfirm(advice?: Advice | null): boolean {
+  if (!advice) return false
+  return (
+    advice.effect === 'destructive' ||
+    advice.effect === 'external' ||
+    advice.effect === 'spend' ||
+    advice.reversible === false
+  )
 }
 
 /** 系统是否已经替用户执行过这张卡的票拟（宿主写 advice-applied 事件）。 */

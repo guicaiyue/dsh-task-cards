@@ -128,6 +128,9 @@ export async function fetchTitles(ids: string[]): Promise<Record<string, string>
 }
 
 /** 心跳：宿主据此判断面板在不在线（在就允许卡片作答）。 */
-export function pingPresence(active = true): void {
-  post(`${API}/presence`, { active }).catch(() => {})
+export function pingPresence(
+  active = true,
+  context?: { sessionId?: string; tab?: string; openCardId?: string },
+): void {
+  post(`${API}/presence`, { active, ...context }).catch(() => {})
 }

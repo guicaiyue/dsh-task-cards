@@ -7,6 +7,7 @@
 import type { Card } from '../../shared/contract'
 import type { Store } from '../cards/store'
 import type { HostRuntime, Log } from '../host-api'
+import { answerQuestion } from '../question/answer'
 
 export interface ScannerOptions {
   getCtx: () => HostRuntime | null
@@ -70,20 +71,13 @@ export class Scanner {
     const ctx = this.#getCtx()
     const action = card.action
     const target = action?.sessionId || card.origin?.sessionId
-    const controller = new AbortController()
     try {
       if (!ctx?.sessionController) throw new Error('宿主缺少 sessionController')
       if (!target) throw new Error('卡片没有可回访的会话')
       if (!action?.input) throw new Error('自动动作缺少要补的那句话')
-      await ctx.sessionController.prompt(
-        {
-          requestId: `card-auto-${Date.now().toString(36)}`,
-          sessionId: target,
-          mode: 'queue',
-          content: [{ type: 'text', text: action.input }],
-        },
-        controller.signal,
-      )
+      // 和卡片答复走同一条路：agent followup + 自定义 source，聊天里是「任务卡答复」通知，
+      // 不是用户气泡；只有冷会话兜底才退回 prompt。
+      await answerQuestion({ ...card, question: null }, action.input, ctx)
       await this.#cards.patch(
         card.id,
         { status: 'done', executedAt: Date.now(), lastError: null },
@@ -99,12 +93,6 @@ export class Scanner {
         .catch(() => {})
       this.#log(`自动处理失败：${card.title} — ${message}`)
       return { id: card.id, ok: false, error: message }
-    } finally {
-      try {
-        controller.abort()
-      } catch {
-        /* 已经结束 */
-      }
     }
   }
 }

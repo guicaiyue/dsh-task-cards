@@ -67,6 +67,7 @@ describe('卡片契约', () => {
     expect(parsed.source).toBe('human')
     expect(parsed.detail).toBe('')
     expect(parsed.action).toBeNull()
+    expect(parsed.silent).toBe(false)
   })
 
   it('非法 kind / status 被拒', () => {

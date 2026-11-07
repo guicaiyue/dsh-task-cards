@@ -42,7 +42,8 @@ describe('自动卡扫描器', () => {
     expect(results[0]?.ok).toBe(true)
     expect(prompts).toHaveLength(1)
     expect(prompts[0]?.sessionId).toBe('session-x')
-    expect(prompts[0]?.content?.[0]?.text).toBe('继续刚才那步')
+    expect(prompts[0]?.content?.[0]?.text).toContain('〔任务卡答复')
+    expect(prompts[0]?.content?.[0]?.text).toContain('继续刚才那步')
 
     const after = cards.find(card.id)
     expect(after?.status).toBe('done')

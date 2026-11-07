@@ -7,8 +7,10 @@ import type {
   Advice,
   AdviceOption,
   AdviceVerdict,
+  AskKind,
   CardKind,
   CardSeverity,
+  Effect,
 } from '../../shared/contract'
 import { asRecord } from '../host-api'
 import { extractJson } from '../observer/extract'
@@ -20,6 +22,8 @@ export interface AdviceDraft extends Omit<Advice, 'at'> {
 const VERDICTS = new Set<string>(['approve', 'reject', 'modify', 'wait'])
 const LANES = new Set<string>(['decision', 'info', 'auto'])
 const CONFIDENCES = new Set<string>(['high', 'normal', 'low'])
+const ASKS = new Set<string>(['judgment', 'permission', 'clarification'])
+const EFFECTS = new Set<string>(['read', 'write-code', 'destructive', 'external', 'spend'])
 const MAX_OPTIONS = 3
 const MAX_FIELD = 2000
 
@@ -101,6 +105,14 @@ function toDraft(value: unknown, knownIds: ReadonlySet<string>): AdviceDraft | n
     confidence: pickEnum<CardSeverity>(raw.confidence, CONFIDENCES, 'normal'),
     question: text(raw.question, 400),
     lane: pickEnum<CardKind>(raw.lane, LANES, 'decision'),
+    ask: pickEnum<AskKind>(raw.ask, ASKS, 'judgment'),
+    effect: pickEnum<Effect>(raw.effect, EFFECTS, 'write-code'),
+    requires: textList(raw.requires, 8),
+    action: text(raw.action, 1000),
+    scope: text(raw.scope, 400),
+    reversible: raw.reversible === true,
+    candidates: textList(raw.candidates, 8),
+    blockedReasons: [],
     applied: false,
   }
 }

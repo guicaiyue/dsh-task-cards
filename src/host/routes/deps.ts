@@ -4,6 +4,7 @@ import type { Policy } from '../../shared/contract'
 import type { PrecedentStore, RecordStore, SettingsStore, Store } from '../cards/store'
 import type { Decision } from '../decision/runner'
 import type { HostRuntime } from '../host-api'
+import type { Presence } from '../presence'
 import type { Scanner } from '../scanner/scanner'
 
 export interface RouteDeps {
@@ -19,6 +20,7 @@ export interface RouteDeps {
   runtime: () => HostRuntime | null
   scanner: Scanner
   syncPreset: () => Promise<void>
+  presence: Presence
 }
 
 /** 取 query 参数：面板只传一两个参数，不值得引入解析库。 */

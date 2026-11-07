@@ -6,7 +6,9 @@
 import type { Card } from '../../shared/contract'
 import { ACTION_EVENT, ACTION_RESULT, isCardAction, isClosed } from '../../shared/state'
 import { StoreError } from '../cards/store'
+import { manualBlockers } from '../decision/answer-guard'
 import { choiceOfAction, markReworked, recordChoice } from '../decision/precedent'
+import { clarificationAnswer, permissionAnswer } from '../decision/templates'
 import { asString } from '../host-api'
 import type { HttpRequestLike, HttpResponseLike } from '../http'
 import { readJson, sendJson } from '../http'
@@ -39,6 +41,8 @@ export function createActionHandler(deps: RouteDeps) {
     if (name === 'adopt') return adoptCard(deps, card, asString(body.option), res)
     // 批红是唯一会把话推回原会话的卡片动作：批准了就应该让那轮对话继续跑。
     if (name === 'approve') return approveCard(deps, card, asString(body.option), res)
+    // 许可卡拒绝：把固定模板推回原会话，不是静默关闭。
+    if (name === 'deny') return denyCard(deps, card, res)
     if (name === 'mark-reworked') return reworkCard(deps, card, asString(body.option), res)
     if (!isCardAction(name)) throw new StoreError('BAD_ACTION', '未知操作')
     const wasClosed = isClosed(card.status)
@@ -64,8 +68,16 @@ async function answerCard(
   raw: string,
   res: HttpResponseLike,
 ): Promise<unknown> {
-  const text = raw.trim()
-  if (!text) throw new StoreError('MISSING_ANSWER', '缺少要回答的内容')
+  const rawText = raw.trim()
+  if (!rawText) throw new StoreError('MISSING_ANSWER', '缺少要回答的内容')
+  // 澄清卡的答复要带上原问题，原会话才能独立接住。
+  const text =
+    card.ask === 'clarification'
+      ? clarificationAnswer(
+          card.advice?.question || card.question?.items?.[0]?.question || card.title,
+          rawText,
+        )
+      : rawText
   const question = (card.question || {}) as CardQuestion
   const sessionId = question.sessionId || (card.origin && card.origin.sessionId)
   const items = Array.isArray(question.items) ? question.items : []
@@ -88,6 +100,32 @@ async function answerCard(
     )
   }
   return sendJson(res, 200, { ok: true, result, card: deps.cards.find(card.id) })
+}
+
+/** 许可卡拒绝：把固定模板推回原会话，再结束卡片。 */
+async function denyCard(deps: RouteDeps, card: Card, res: HttpResponseLike): Promise<unknown> {
+  if (card.ask !== 'permission') throw new StoreError('BAD_ACTION', '只有许可卡可以拒绝')
+  const text = permissionAnswer(card, false)
+  const wasClosed = isClosed(card.status)
+  const result = await deliverToOrigin({
+    cards: deps.cards,
+    getCtx: deps.runtime,
+    log: deps.log,
+    card,
+    text,
+    event: 'denied',
+  })
+  if (result.pushed && !wasClosed && result.card) {
+    await recordChoice(deps.precedents, result.card, text).catch((err: unknown) =>
+      deps.log(`判例写入失败：${messageOf(err)}`),
+    )
+  }
+  return sendJson(res, 200, {
+    ok: true,
+    pushed: result.pushed,
+    ...(result.reason ? { reason: result.reason } : {}),
+    card: deps.cards.find(card.id),
+  })
 }
 
 /** 采纳票拟里的第 N 个方案：option 是 0-based 序号，等价于用它的 answer 作答。 */
@@ -147,7 +185,11 @@ async function approveCard(
   raw: string,
   res: HttpResponseLike,
 ): Promise<unknown> {
-  const text = approveText(card, raw)
+  const text = card.ask === 'permission' ? permissionAnswer(card, true) : approveText(card, raw)
+  const blockers = manualBlockers(card, text)
+  if (blockers.length) {
+    throw new StoreError('NOT_EXECUTABLE', `这句话执行不了：${blockers.join(', ')}`)
+  }
   const wasClosed = isClosed(card.status)
   const result = await deliverToOrigin({
     cards: deps.cards,

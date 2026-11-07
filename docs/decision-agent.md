@@ -17,7 +17,7 @@
         │  本次新建的卡
         ▼
 决策会话（无工具 preset，独立 session，只读卡与判例）
-        │  只输出 JSON：{"decisions":[{cardId, lane, verdict, summary, options[], basis, precedentIds, confidence, question}]}
+        │  只输出 JSON：{"decisions":[{cardId, lane, ask, verdict, summary, effect, requires[], action, scope, reversible, candidates[], options[], basis, precedentIds, confidence, question}]}
         ▼
 parse → 写回 card.advice（事件 advised）
         │  车道只是 decision → info 时顺手纠正（事件 lane:info）
@@ -30,6 +30,28 @@ parse → 写回 card.advice（事件 advised）
 ```
 
 失败重试一次，仍失败只记日志与卡事件，不影响卡本身可用。
+
+## 三种请求：判断 / 许可 / 澄清
+
+`kind=decision` 还不够具体；决策代理人再标一层 `ask`：
+
+- `judgment`：有 A/B 两个以上方向要比较。给 2–3 个方案，每个写成本 / 长期收益 / 最坏情况。
+- `permission`：只有一个已定动作，等用户 yes/no（提交、改代码、推送、删除、花钱、对外发消息）。不给替代设计，只给 `action` / `scope` / `effect` / `reversible`；面板显示「将执行 / 范围 / 影响 / 可撤回」，主按钮「批准并执行」、次按钮「拒绝」，两句话都由宿主模板生成。不可逆或对外/花钱的许可卡（`reversible=false` 或 `effect=destructive/external/spend`）在行上只给「查看并确认」，详情里必须勾选「我已知晓」才会解禁，防止误点。
+- `clarification`：只缺一条事实/指代（是哪张卡、哪个文件、哪个账号）。不给方案，只给 `question` + `candidates`；面板给候选按钮和输入框，答复会拼成「补充信息：…。这是对「…」的回答，继续。」。如果卡片 `origin.uiCardId` 非空且能对上（等于 `sourceCardId`，或最近卡里唯一一张），宿主会直接用这张卡的 id 作为答案并自动投递，不再问用户；面板开着无关卡时保留澄清；模型也可以主动把 `answer`、`effect=read`、`autoApply=true` 写出来。
+
+拿不准时：judgment/permission 拿不准选 permission（少让人做设计）；permission/clarification 拿不准选 clarification（只补信息）。
+
+## 自动执行闸门
+
+`autoApply=true` 只是候选，真正投递前还要过 `decision/answer-guard.ts`：
+
+1. `effect` 必须是 `read`；例外是可撤销的诊断性 `write-code`（日志/插桩/复测/只读检查，且不含 commit/push/删除/发布）。它只有在 `decisionAutoApply` 或独立开关 `autoApproveDiagnostics` 打开时才自动放行并把卡标完成；两个开关都关就停在许可。`destructive` / `external` / `spend` 一律拦。
+2. `requires` 必须全在当前能力清单里（`session.reply` / `cards.complete` / `cards.acknowledge` / `cards.dismiss`）；插件没有写卡片正文的接口，所以 `cards.append` / `cards.write-body` 会被拦。
+3. `answer` 必须能独立成立：不得出现「这张卡 / 上一张 / 刚才那张」这类没有具体目标的指代；需要指代时写卡片 id 或标题。
+4. 必须有 `origin.sessionId`，否则没有可投递的会话。
+5. 卡里说「三张旧卡 / 这几张卡」却没有任何卡片 id 时，`decision/reference.ts` 会把它强制改成澄清，问清是哪几张，不允许批准一个对象不明的动作。
+
+任何一条不满足：不投递，把原因写进 `advice.blockedReasons`，面板详情直接显示；人工批准只拦「不存在的能力」，不拦指代。自动执行成功/失败都不写判例。
 
 ## 提示词就是他的决策画像
 
@@ -68,6 +90,7 @@ parse → 写回 card.advice（事件 advised）
 | `decisionProvider` / `decisionModel` | 空 | 空 = 与观察者一致的默认模型 |
 | `decisionPrecedentLimit` | `30` | 单次输入带多少条判例 |
 | `decisionAutoApply` | `true` | 允许系统直接执行 `autoApply=true` 的票拟；关掉就退化成「全部等人批红」 |
+| `autoApproveDiagnostics` | `false` | 独立开关：只自动放行可逆的诊断性 `write-code`（日志/插桩/复测/只读检查），不影响其它票拟；与 `decisionAutoApply` 取并集 |
 
 一次决策会话覆盖「本次观察者新建的一批卡」，不是一张卡开一个会话：省 token，也方便它横向比较。
 
@@ -77,7 +100,8 @@ parse → 写回 card.advice（事件 advised）
 
 | 票拟 | 谁动手 | 卡的去向 |
 | :-- | :-- | :-- |
-| `autoApply: true` 且 `decisionAutoApply` 开着 | **系统**（把 `answer` 发回原会话） | `done`，事件 `advice-applied` |
+| `autoApply: true` 且 `decisionAutoApply` 开着且过闸门 | **系统**（把 `answer` 发回原会话） | `done`，事件 `advice-applied` |
+| `autoApply: true` 但闸门拦下 | 不投递，等人批 | `open`，`advice.blockedReasons` 写明原因 |
 | 其余票拟 | 你（「批准」或「采纳某个方案」） | `done`，事件 `approved` / `answered` |
 | 自动执行**投递失败** | 你（卡留在待决策，并带上失败原因） | `open` + `lastError`，事件 `advice-applied:failed` |
 | 你标返工 | 你 | 状态不变，判例 `outcome=reworked` |
@@ -97,6 +121,7 @@ parse → 写回 card.advice（事件 advised）
 - 不自动执行「不可逆」的 `action`：外部世界留痕的事（改代码、删数据、对外发声、花钱）必须人批。`autoApply=true` 只覆盖撤回不需要你动手的那一类。
 - 自动执行不写判例（见上）。
 - 不做跨卡合并或拆分：一张卡一条 decisions。
+- `POST /decisions {action:'preview'}` 是只读预演：跑同一套提示词/输入，返回解析后的票拟，但不写卡、不投递、不记执行记录。
 - 不写判例的 `valid` 判断：验收只能由人（或明确的成功信号）给，代理人越权就是自己给自己发合格证。
 - 不改观察者的分类提示词：分类与决策是两段，混在一起会让两边都变差。
 

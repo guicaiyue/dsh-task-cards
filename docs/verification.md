@@ -26,7 +26,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 | 顶部 | 四个 KPI、卡片/提示词两个 tab、刷新按钮 |
 | 卡片顺序 | 第一条是「要我决策」的未结束卡（不是最新生成的那张）；会话树按组内最该处理的卡排，组头显示「n 待处理」，已结束的组沉底 |
 | 手写一条（回车） | 立刻出现在「手写卡片」组，行上有「知道了」，KPI 跟着变 |
-| 观察者写的通知卡（`info` + `source=agent`） | 行上没有「知道了 / 忽略」，只有「删除」；打开卡片页几秒内自动变灰进「已结束」 |
+| 观察者写的通知卡（`info` + `source=agent`） | 行上没有「知道了 / 忽略」，只有「删除」；卡片在视口里停满 2 秒才自动变灰进「已结束」——切走页签、滚出视口、隐藏窗口都不算 |
 | KPI「要我知晓」 | 数最近 24 小时的知晓卡；读掉通知后数字不归零，超过 24 小时才掉 |
 | 侧栏未读圆点 | 有未读知晓卡时「任务卡」图标右上角有圆点；打开卡片页自动已读后 ≤10 秒消失 |
 | 点「知道了」(人手写的 info) | 卡片变灰、移到「已结束」，KPI 变化 |
@@ -36,6 +36,24 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 | 深色主题 | `body[data-ds-dark-theme]` 下面板配色跟着变 |
 | 客户端热重载 | 改 `src/client/**` 并 `pnpm dev`，浏览器不刷新也会出现新 UI（宿主 500 ms 轮询 bundle） |
 | 宿主热重载 | 改 `src/host/**` 并 `pnpm dev`，**1–2 s 后**接口行为即变（不用重启 dsh）；用一次可观察的改动验证（如错误码/文案）。**但 chokidar 监听会静默死掉**：新端点一直是 404 而客户端已是新版，就是它；`systemctl restart dsh.service`（`NODE_ENV=production` 的部署里别把热重载当默认前提） |
+
+## 2.1 三车道与来源（v0.4）
+
+| 检查 | 期望 |
+| :-- | :-- |
+| 判断卡（`ask=judgment`） | 行上有「判断」chip；主按钮「批准」，详情展开票拟方案 |
+| 通用 source-kind | 非本插件的 `turn-trigger` 也走插件文案：`schedule` 显示「定时任务」、`webhook`+github 显示「GitHub 事件」、未知 kind 显示「其他来源」；深色/浅色都用同一套 token。 |
+| 许可卡（`ask=permission`） | 行上有「许可」chip；主按钮「批准并执行」、次按钮「拒绝」；详情显示「将执行 / 范围 / 影响 / 可撤回」；不可逆时行上变成「查看并确认」，详情必须勾选「我已知晓」才能点「批准并执行」 |
+| 澄清卡（`ask=clarification`） | 行上有「澄清」chip；主按钮「补充信息」；详情显示问题、候选按钮、输入框（输入前「提交」禁用） |
+| 来源块 | 详情里能看到「你说过」的真人原话；系统代发时显示「系统代发」和来源卡 id；面板打开着别的卡时显示「面板当时打开」 |
+| 可逆诊断改动 | `write-code + reversible=true + 日志/插桩/复测` 的许可卡，在 `autoApproveDiagnostics` 或 `decisionAutoApply` 打开时自动放行，卡直接 done；两个开关都关时停在许可；含 commit/push/删除的始终停在许可。 |
+| 对象不明的多卡指代 | 卡里说「三张旧卡」但没有 id 时，决策结果强制变成澄清「你指的是哪几张卡？请给出卡片 id」，不出现批准按钮。 |
+| 自动执行闸门 | `advice.blockedReasons` 非空时，详情显示人话原因（缺能力 / 指代不明 / 影响等级不是只读） |
+| 旧卡兼容 | 没有 `ask` 的历史卡按「判断」显示，不出现 `ask_undefined` |
+| presence | 面板打开时每 20 s `POST /presence`，宿主返回 `{ok:true}`；打开卡片详情后心跳里带 `sessionId` / `openCardId` |
+| 观察者→卡片→决策代理端到端 | 真机新会话发一条 55 字决策请求：观察者建出 decision 卡，`origin.triggerText` 等于用户原话、`sourceKind=human`；redecide 后出票拟，`advice.ask=judgment`、`effect=read`、`requires=[session.reply]` |
+| 实时会话的卡片答复 | 批准后聊天里出现「任务卡答复」折叠块（不是用户气泡）；展开显示「这张卡把答复发回了原会话，触发了本轮回复」、来源卡片和去掉标记的正文，模型回复正常 |
+| 冷会话的卡片答复 | `agents.get` 返回空时先 `sessionController.agents.resolveAgent` 恢复再 `followup`，聊天仍显示「任务卡答复」通知；恢复失败保留卡片并报 `NO_AGENT`，不再伪装成用户消息 |
 
 ## 3. 观察者（可选，会产生真实模型调用）
 

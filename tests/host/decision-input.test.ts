@@ -15,8 +15,10 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     source: 'agent',
     interaction: 'reply',
     question: null,
+    ask: 'judgment',
     origin: null,
     advice: null,
+    silent: false,
     createdAt: 1,
     updatedAt: 1,
     events: [],
@@ -79,6 +81,32 @@ describe('决策输入构造', () => {
       note: '',
     })
     expect(precedents[0]?.keywords).toEqual(['登录'])
+  })
+
+  it('卡片块带 triggerText：系统代发的真正触发输入，与 userQuote 分开', () => {
+    const input = buildDecisionInput(
+      [
+        makeCard({
+          id: 'c-3',
+          origin: {
+            reason: '系统代发触发，模型只报告结果',
+            triggerText: '跑一次复现脚本，只记录真机结果，不要改代码',
+            sourceKind: 'card-answer',
+            sourceCardId: 'c-prev',
+            userQuote: '先只做 P0-2',
+          },
+        }),
+      ],
+      [],
+      30,
+    )
+    const cards = JSON.parse(blockOf(input, 'cards')) as Array<Record<string, unknown>>
+    expect(cards[0]).toMatchObject({
+      triggerText: '跑一次复现脚本，只记录真机结果，不要改代码',
+      userQuote: '先只做 P0-2',
+      sourceKind: 'card-answer',
+      sourceCardId: 'c-prev',
+    })
   })
 
   it('卡片块带上观察者给的 reason（分类凭据），空则是空串', () => {
@@ -158,5 +186,29 @@ describe('决策输入构造', () => {
     const cards = JSON.parse(blockOf(input, 'cards')) as Array<{ detail: string }>
     expect(cards[0]?.detail.length).toBe(1000)
     expect(bytes(input)).toBeLessThanOrEqual(DECISION_INPUT_MAX_BYTES)
+  })
+})
+
+describe('决策输入：来源与能力', () => {
+  it('带用户原话、来源卡、UI 卡和能力清单', () => {
+    const card = makeCard({
+      ask: 'permission',
+      origin: {
+        sessionId: 's-1',
+        reason: '模型在等确认',
+        userQuote: '先只做 P0-2，别碰 P1',
+        sourceKind: 'card-answer',
+        sourceCardId: 'c-old',
+        uiCardId: 'c-ui',
+        relatedCardIds: ['c-1', 'c-2'],
+      },
+    })
+    const input = buildDecisionInput([card], [], 30)
+    expect(input).toContain('先只做 P0-2，别碰 P1')
+    expect(input).toContain('"sourceKind":"card-answer"')
+    expect(input).toContain('"sourceCardId":"c-old"')
+    expect(input).toContain('"uiCardId":"c-ui"')
+    expect(input).toContain('<capabilities>')
+    expect(input).toContain('cards.append')
   })
 })

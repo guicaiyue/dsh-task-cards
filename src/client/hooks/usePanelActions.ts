@@ -58,7 +58,7 @@ export function usePanelActions({
         const result = await act(card, action, option)
         if (action === 'delete') detail.closeDetail()
         else if (result?.card) detail.replaceCard(result.card)
-        if (action === 'approve' && result) {
+        if ((action === 'approve' || action === 'deny') && result) {
           notify({ pushed: result.pushed !== false, reason: result.reason || '' })
         }
       })

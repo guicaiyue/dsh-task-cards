@@ -38,7 +38,10 @@ export interface CreateCardOptions {
   source?: unknown
   interaction?: unknown
   question?: unknown
+  ask?: unknown
   origin?: unknown
+  /** 用户在原会话里已经看过了：落盘即 acknowledged，并留一条 `via: silent` 事件。 */
+  silent?: unknown
 }
 
 function normalizeKind(value: unknown): CardKind {
@@ -47,6 +50,10 @@ function normalizeKind(value: unknown): CardKind {
 
 function normalizeSeverity(value: unknown): CardSeverity {
   return value === 'high' || value === 'low' ? value : 'normal'
+}
+
+function normalizeAsk(value: unknown): Card['ask'] {
+  return value === 'permission' || value === 'clarification' ? value : 'judgment'
 }
 
 function normalizeAction(value: unknown): CardAction | null {
@@ -94,6 +101,9 @@ export class Store {
     const now = Date.now()
     const action = normalizeAction(extra.action)
     const dueAt = action ? now + (Number.isFinite(action.delayMs) ? action.delayMs : 600000) : null
+    // 免打扰只对「不需要动作」的卡成立：带 action 的卡还要到点执行，状态得是 scheduled。
+    const silent = !action && extra.silent === true
+    const source = extra.source === 'agent' ? 'agent' : 'human'
     const card: Card = {
       id: nextId('c'),
       title: text,
@@ -101,18 +111,23 @@ export class Store {
       kind: normalizeKind(extra.kind),
       severity: normalizeSeverity(extra.severity),
       // open 未处理 / acknowledged 已读 / scheduled 已排自动动作 / done 已完成 / dismissed 忽略
-      status: action ? 'scheduled' : 'open',
+      status: action ? 'scheduled' : silent ? 'acknowledged' : 'open',
       action,
       dueAt,
-      source: extra.source === 'agent' ? 'agent' : 'human',
+      source,
       // 两种交互：question = 模型提问把对话卡住了；reply = 一轮回复结束后的记录。
       interaction: extra.interaction === 'question' ? 'question' : 'reply',
       question: (extra.question as Card['question']) ?? null,
+      ask: normalizeAsk(extra.ask),
       origin: (extra.origin as Card['origin']) ?? null,
       advice: null,
+      silent,
       createdAt: now,
       updatedAt: now,
-      events: [{ at: now, type: 'created', via: extra.source === 'agent' ? 'agent' : 'human' }],
+      events: [
+        { at: now, type: 'created', via: source },
+        ...(silent ? [{ at: now, type: 'acknowledged', via: 'silent' }] : []),
+      ],
     }
     this.#cards().unshift(card)
     await this.#doc.write(this.#cards())
@@ -127,11 +142,22 @@ export class Store {
   due(now: number = Date.now()): Card[] {
     return this.#cards().filter(
       (card) =>
+        card.kind === 'auto' &&
         card.status === 'scheduled' &&
         card.action &&
         typeof card.dueAt === 'number' &&
         card.dueAt <= now,
     )
+  }
+
+  /** 用户后来才回到会话：把已经落盘的近期通知补标成「已看过」，不再亮未读。 */
+  async markSeen(id: string, at: number = Date.now()): Promise<Card> {
+    const card = this.#cards().find((item) => item.id === id)
+    if (!card) throw new StoreError('NOT_FOUND', '这张卡不存在（可能已被删除）')
+    Object.assign(card, { silent: true, status: 'acknowledged', updatedAt: at })
+    card.events.push({ at, type: 'acknowledged', via: 'silent' })
+    await this.#doc.write(this.#cards())
+    return { ...card }
   }
 
   /** 统一的改状态入口：所有变更都留一条事件。 */
@@ -204,6 +230,8 @@ export class SettingsStore {
     // 自动执行开关：面板关掉以后，任何票拟都不许代跑。
     if (typeof patch.decisionAutoApply === 'boolean')
       next.decisionAutoApply = patch.decisionAutoApply
+    if (typeof patch.autoApproveDiagnostics === 'boolean')
+      next.autoApproveDiagnostics = patch.autoApproveDiagnostics
     await this.#doc.write(next)
     return next
   }

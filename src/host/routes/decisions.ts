@@ -26,9 +26,16 @@ export function createDecisionsHandler({ cards, precedents, records, decision, l
     }
     const body = await readJson(req)
     const action = asString(body.action)
+    const rawIds = Array.isArray(body.ids) ? body.ids.map((item) => asString(item)) : []
+    const ids = rawIds.filter(Boolean)
     const id = asString(body.id)
-    if (!id) throw new StoreError('MISSING_ID', '缺少卡片 id')
-    const card = cards.find(id)
+    if (id) ids.unshift(id)
+    if (!ids.length) throw new StoreError('MISSING_ID', '缺少卡片 id')
+    if (action === 'preview') {
+      const result = await decision.preview(ids)
+      return sendJson(res, 200, result)
+    }
+    const card = cards.find(ids[0] ?? '')
     if (!card) throw new StoreError('NOT_FOUND', '这张卡不存在（可能已被删除）')
     if (action === 'mark-reworked') {
       const note = asString(body.option) || asString(body.note)
@@ -38,7 +45,7 @@ export function createDecisionsHandler({ cards, precedents, records, decision, l
     }
     if (action === 'redecide') {
       // 立即排队重跑，不占着 HTTP 请求等模型（一次决策可能几十秒）。
-      decision.redecide(id)
+      decision.redecide(ids[0] ?? '')
       log(`重新出票拟：${card.title}`)
       return sendJson(res, 200, { ok: true, scheduled: true, card })
     }
