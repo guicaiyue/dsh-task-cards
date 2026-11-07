@@ -3,8 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+import { DEFAULT_SETTINGS } from '../../src/host/cards/defaults'
 import { Store } from '../../src/host/cards/store'
-import { markRecentInfoCardsSeen, RECENT_SEEN_MS } from '../../src/host/observer/seen'
+import { markRecentInfoCardsSeen, RECENT_SEEN_MS, SeenTracker } from '../../src/host/observer/seen'
+import { createHandlers } from '../../src/host/observer/trigger'
 
 function tempStore(): Store {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dtc-seen-'))
@@ -27,6 +29,38 @@ describe('用户晚到时的补标已读', () => {
     expect(after?.silent).toBe(true)
     expect(after?.status).toBe('acknowledged')
     expect(after?.events.at(-1)).toMatchObject({ type: 'acknowledged', via: 'silent' })
+  })
+
+  it('trigger 收到 human user/message 时会补标', async () => {
+    const cards = tempStore()
+    const info = await cards.create('刚落的通知', {
+      kind: 'info',
+      origin: { sessionId: 's-1', reason: '' },
+    })
+    const handlers = createHandlers({
+      observer: {
+        waiter: { cancel: () => {} },
+        enqueue: async (job: () => Promise<unknown>) => job(),
+        run: async () => null,
+      } as never,
+      settings: () => DEFAULT_SETTINGS,
+      log: () => {},
+      captureQuestion: async () => {},
+      tracker: new Map(),
+      seen: new SeenTracker(),
+      cards,
+    })
+    handlers.onSessionEvent(
+      { id: 's-1', header: {} },
+      {
+        type: 'user/message',
+        time: Date.now(),
+        data: { content: [{ type: 'text', text: '收到' }], source: { kind: 'user' } },
+      },
+    )
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(cards.find(info.id)?.silent).toBe(true)
+    expect(cards.find(info.id)?.status).toBe('acknowledged')
   })
 
   it('不碰别的会话、决策卡、已完成卡和过老的卡', async () => {
