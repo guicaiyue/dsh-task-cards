@@ -36,8 +36,10 @@ export function autoApplyAllowed(
   allowed: boolean,
   diagnostics: boolean,
 ): boolean {
-  if (!advice?.autoApply) return false
-  return allowed || (diagnostics && safeDiagnosticWrite(advice))
+  if (!advice) return false
+  if (allowed && advice.autoApply) return true
+  // 独立开关只认「许可卡 + 可逆诊断改动」，不要求模型自己标 autoApply。
+  return diagnostics && advice.ask === 'permission' && safeDiagnosticWrite(advice)
 }
 
 /** 推荐方案里那句能独立成立的话；没有（或序号越界）返回空串。 */

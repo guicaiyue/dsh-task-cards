@@ -102,6 +102,7 @@ describe('自动执行闸门', () => {
       reversible: true,
       action: '加临时日志后复测',
       scope: '仅日志',
+      ask: 'permission',
     })
     expect(autoApplyAllowed(diagnostic, false, true)).toBe(true)
     expect(autoApplyAllowed(diagnostic, false, false)).toBe(false)
@@ -112,6 +113,7 @@ describe('自动执行闸门', () => {
       reversible: true,
       action: 'git commit 22 个文件',
       scope: 'workspace',
+      ask: 'permission',
     })
     expect(autoApplyAllowed(commit, false, true)).toBe(false)
   })

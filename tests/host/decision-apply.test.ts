@@ -76,7 +76,7 @@ describe('票拟写回', () => {
         scope: '仅日志插桩',
       }),
     )
-    expect(diagnostic.card.advice?.autoApply).toBe(true)
+    expect(diagnostic.card.ask).toBe('permission')
 
     const commit = await applyAdvice(
       store,
@@ -90,7 +90,7 @@ describe('票拟写回', () => {
         scope: 'workspace',
       }),
     )
-    expect(commit.card.advice?.autoApply).toBe(false)
+    expect(commit.card.advice?.ask).toBe('permission')
   })
 
   it('info/auto 想升成 decision 不落盘，只在票拟里说明', async () => {

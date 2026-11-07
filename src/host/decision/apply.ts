@@ -7,7 +7,6 @@
 
 import type { Advice, Card, CardKind } from '../../shared/contract'
 import type { Store } from '../cards/store'
-import { safeDiagnosticWrite } from './answer-guard'
 import type { AdviceDraft } from './parse'
 
 export interface ApplyAdviceResult {
@@ -57,8 +56,6 @@ export async function applyAdvice(
   // 先记车道纠正（事件 lane:info），再写票拟；两条事件都能在卡上看到。
   if (nextKind) await cards.patch(card.id, { kind: nextKind }, 'lane:info')
   const advice = toAdvice(draft, nextKind !== null)
-  // 可逆的诊断性代码改动（加日志/插桩/复测）不需要用户点头：自动放行，出回执。
-  if (advice.ask === 'permission' && safeDiagnosticWrite(advice)) advice.autoApply = true
   // 车道也要落回卡片顶层：面板行和详情块都读 card.ask，只写 advice.ask 会让
   // 旧卡重拟后仍显示「判断」。
   const patch: Partial<Card> = { advice }
