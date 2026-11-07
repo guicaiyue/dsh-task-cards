@@ -470,6 +470,41 @@ describe('决策会话', () => {
     expect(record?.error).toContain('票拟 JSON')
   })
 
+  it('澄清卡且面板打开着另一张卡：自动用 uiCardId 回答并投递', async () => {
+    const { decision, cards, host } = rig()
+    const target = await cards.create('是哪张卡', {
+      kind: 'decision',
+      ask: 'clarification',
+      origin: { sessionId: ORIGIN, reason: '指代不明', uiCardId: 'c-other' },
+    })
+    const payload = JSON.stringify({
+      decisions: [
+        {
+          cardId: target.id,
+          lane: 'decision',
+          ask: 'clarification',
+          verdict: 'wait',
+          question: '你指的是哪张卡？',
+          chosen: 0,
+          autoApply: false,
+          options: [],
+          basis: '无同类判例',
+          confidence: 'normal',
+        },
+      ],
+    })
+    replyWith(decision, host, payload)
+
+    const result = await decision.run([target.id])
+    expect(result.applied).toBe(1)
+    const after = cards.find(target.id)
+    expect(after?.status).toBe('done')
+    expect(after?.answer).toContain('补充信息：c-other')
+    const delivered = host.prompts.filter((item) => item.sessionId === ORIGIN)
+    expect(delivered).toHaveLength(1)
+    expect(delivered[0]?.text).toContain('补充信息：c-other')
+  })
+
   it('listByPhase 只挑决策记录，观察者记录不进 /decisions', async () => {
     const { records } = rig()
     await records.add({ phase: 'observer', status: 'ok' })

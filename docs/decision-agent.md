@@ -37,7 +37,7 @@ parse → 写回 card.advice（事件 advised）
 
 - `judgment`：有 A/B 两个以上方向要比较。给 2–3 个方案，每个写成本 / 长期收益 / 最坏情况。
 - `permission`：只有一个已定动作，等用户 yes/no（提交、改代码、推送、删除、花钱、对外发消息）。不给替代设计，只给 `action` / `scope` / `effect` / `reversible`；面板显示「允许一次 / 拒绝」，两句话都由宿主模板生成。
-- `clarification`：只缺一条事实/指代（是哪张卡、哪个文件、哪个账号）。不给方案，只给 `question` + `candidates`；面板给候选按钮和输入框，答复会拼成「补充信息：…。这是对「…」的回答，继续。」。
+- `clarification`：只缺一条事实/指代（是哪张卡、哪个文件、哪个账号）。不给方案，只给 `question` + `candidates`；面板给候选按钮和输入框，答复会拼成「补充信息：…。这是对「…」的回答，继续。」。如果卡片 `origin.uiCardId` 非空（建卡时面板正打开着另一张卡），宿主会直接用这张卡的 id 作为答案并自动投递，不再问用户；模型也可以主动把 `answer`、`effect=read`、`autoApply=true` 写出来。
 
 拿不准时：judgment/permission 拿不准选 permission（少让人做设计）；permission/clarification 拿不准选 clarification（只补信息）。
 

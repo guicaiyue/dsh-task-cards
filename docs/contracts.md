@@ -76,7 +76,7 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 ```
 card.advice = { verdict: approve|reject|modify|wait, summary, confidence, question,
                 options: [{ name, cost, gain, worst, answer, verdict }],  // 最多 3 个
-                chosen, autoApply, basis, precedentIds[], lane, applied, at,
+                chosen, autoApply, basis, precedentIds[], lane, applied, at, answer,
                 ask: judgment|permission|clarification,
                 effect: read|write-code|destructive|external|spend,
                 requires: string[], action, scope, reversible, candidates[],

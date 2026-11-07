@@ -182,7 +182,8 @@ export class Decision {
       const card = byId.get(draft.cardId)
       if (!card) continue
       try {
-        const result = await applyAdvice(this.#cards, card, draft)
+        const resolved = resolveClarification(card, draft)
+        const result = await applyAdvice(this.#cards, card, resolved)
         advised += 1
         if (result.corrected) corrected += 1
         const auto = await autoApplyAdvice(this.#autoDeps(allowed), result.card)
@@ -266,4 +267,16 @@ export class Decision {
 
 function skip(reason: string): DecisionRunResult {
   return { ok: false, advised: 0, applied: 0, attempts: 0, sessionId: '', reason }
+}
+
+/** 面板当时打开着某张卡：澄清卡可以直接用它作为答案，不再问用户。 */
+function resolveClarification(card: Card, draft: AdviceDraft): AdviceDraft {
+  if (draft.ask !== 'clarification' || draft.answer || !card.origin?.uiCardId) return draft
+  return {
+    ...draft,
+    answer: `补充信息：${card.origin.uiCardId}。这是对「${draft.question || card.title}」的回答，继续。`,
+    effect: 'read',
+    requires: ['session.reply'],
+    autoApply: true,
+  }
 }

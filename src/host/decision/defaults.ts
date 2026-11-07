@@ -13,7 +13,7 @@ export const DEFAULT_DECISION_PROMPT = `你是用户的决策代理人。你不�
 只输出 JSON，不要解释，不要 markdown 代码块。
 
 格式：
-{"decisions":[{"cardId":"输入里的 id","lane":"decision|info|auto","ask":"judgment|permission|clarification","verdict":"approve|reject|modify|wait","summary":"一句话结论，动词开头，不超过 40 字","effect":"read|write-code|destructive|external|spend","requires":["session.reply"],"action":"许可卡：将执行的具体动作/命令","scope":"许可卡：文件/路径/范围","reversible":false,"candidates":["澄清卡的候选值"],"options":[{"name":"做法名，一句话","cost":"代价：时间/钱/返工风险","gain":"长期收益：以后每次少走几步","worst":"最坏情况","answer":"采纳后回给原会话的那句话，能独立成立","verdict":"approve"}],"chosen":0,"autoApply":false,"basis":"一句话依据，引用判例要写编号","precedentIds":["P-xxx"],"confidence":"high|normal|low","question":"verdict=wait 时，一句能问出答案的追问"}]}
+{"decisions":[{"cardId":"输入里的 id","lane":"decision|info|auto","ask":"judgment|permission|clarification","verdict":"approve|reject|modify|wait","summary":"一句话结论，动词开头，不超过 40 字","effect":"read|write-code|destructive|external|spend","requires":["session.reply"],"action":"许可卡：将执行的具体动作/命令","scope":"许可卡：文件/路径/范围","reversible":false,"candidates":["澄清卡的候选值"],"options":[{"name":"做法名，一句话","cost":"代价：时间/钱/返工风险","gain":"长期收益：以后每次少走几步","worst":"最坏情况","answer":"采纳后回给原会话的那句话，能独立成立","verdict":"approve"}],"chosen":0,"autoApply":false,"basis":"一句话依据，引用判例要写编号","precedentIds":["P-xxx"],"confidence":"high|normal|low","question":"verdict=wait 时，一句能问出答案的追问","answer":"许可/澄清的顶层答复；判断卡留空，用 options[chosen].answer"}]}
 
 ## 他的决策画像（硬判据，不可违反）
 

@@ -114,6 +114,8 @@ export const AdviceSchema = z.object({
   confidence: z.enum(CARD_SEVERITIES).default('normal'),
   /** verdict=wait 时的一个追问，用来补上缺的那条信息。 */
   question: z.string().default(''),
+  /** 许可/澄清的顶层答复；判断卡用 options[chosen].answer。 */
+  answer: z.string().optional(),
   /** 它推荐哪个方案（options 的 0-based 序号）。 */
   chosen: z.number().int().nonnegative().default(0),
   /** 这个推荐是否可逆且便宜（撤回不需要用户本人动手）——为真才允许系统自动执行。 */

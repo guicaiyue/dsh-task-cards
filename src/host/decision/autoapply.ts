@@ -30,6 +30,7 @@ export interface AutoApplyDeps {
 /** 推荐方案里那句能独立成立的话；没有（或序号越界）返回空串。 */
 export function chosenAnswerOf(card: Card): string {
   const advice = card.advice
+  if (advice?.answer?.trim()) return advice.answer.trim()
   if (!advice) return ''
   return (advice.options[advice.chosen]?.answer || '').trim()
 }

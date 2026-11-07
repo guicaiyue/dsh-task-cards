@@ -32,6 +32,7 @@ function toAdvice(draft: AdviceDraft, applied: boolean): Advice {
     autoApply: draft.autoApply,
     confidence: draft.confidence,
     question: draft.question,
+    answer: draft.answer,
     lane: draft.lane,
     ask: draft.ask ?? 'judgment',
     effect: draft.effect ?? 'write-code',
