@@ -65,6 +65,10 @@ export const en: Record<string, string> = {
   permissionEffect: 'Effect: {effect}',
   permissionReversible: 'Reversible: {value}',
   blockedReasons: 'Not auto-run: {reasons}',
+  cardAnswerTitle: 'Task card answer',
+  cardAnswerExplanation:
+    'This card delivered an answer back to the session and triggered this turn.',
+  cardAnswerSource: 'Source card: {card}',
   sourceUser: 'You said',
   sourceSystem: 'System-sent',
   sourceSystemUnknown: '(source card not recorded)',

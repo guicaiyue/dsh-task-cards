@@ -33,6 +33,8 @@
 | `ctx.locale.register(ns, dict)` / `bind(ns)` | 中英字典与 `t()` | 字典值只能是字符串，插值用 `{name}` |
 | `ctx.slots.inject(name, cb)` / `ctx.slots.register(spec, component)` | 注册侧栏入口与主面板 | 侧栏 `id` 必须等于主面板 `key` |
 | `ctx.uiWorkspace.openSession(sessionId)` | 从卡片跳到原会话 | 可选，没有就禁用跳转 |
+| `ctx.uiConversation.events.register(definition)` | → `dispose()` | 为卡片答复注册专用 Chat 节点（`source.kind='dsh-task-cards'`），不抢别的非人工触发 | 没有就退回 DSH 内置 turn-trigger |
+| `ctx.slots.register({name:'conversation.chat.node', key})` | 渲染自定义节点 | 节点标题/正文/主题色 | 没有就显示通用节点 |
 
 ## 踩过的坑（升级时优先复现这几条）
 

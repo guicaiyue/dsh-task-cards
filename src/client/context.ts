@@ -6,6 +6,14 @@ export interface SlotOwner {
   size?: number
 }
 
+export interface ConversationRegistryLike {
+  register(definition: Record<string, unknown>): (() => void) | undefined
+}
+
+export interface UiConversationLike {
+  events?: ConversationRegistryLike
+}
+
 export interface ClientContext {
   effect(fn: () => (() => void) | undefined, label: string): unknown
   locale: {
@@ -17,4 +25,5 @@ export interface ClientContext {
     register(spec: Record<string, unknown>, component: (owner?: SlotOwner) => unknown): unknown
   }
   uiWorkspace?: { openSession?: (sessionId: string) => void }
+  uiConversation?: UiConversationLike
 }

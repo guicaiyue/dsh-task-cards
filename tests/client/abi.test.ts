@@ -77,7 +77,7 @@ describe('客户端 bundle 的宿主 ABI', () => {
   it('id 等于包名，且 factory 返回 inject/apply', () => {
     expect(loaded?.id).toBe('dsh-task-cards')
     expect(Array.isArray(module_?.inject)).toBe(true)
-    expect(module_?.inject).toEqual(['slots', 'locale', 'uiWorkspace'])
+    expect(module_?.inject).toEqual(['slots', 'locale', 'uiWorkspace', 'uiConversation'])
     expect(typeof module_?.apply).toBe('function')
   })
 

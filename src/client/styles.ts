@@ -234,6 +234,41 @@ body[data-ds-dark-theme] .dtc-unread-dot-ring { fill: var(--dsw-specific-sidebar
 .dtc-input { flex: 1; min-width: 120px; padding: 5px 8px; border-radius: 6px;
   border: 1px solid var(--dtc-border); background: var(--dtc-surface); color: var(--dtc-ink);
   font-size: 12px; }
+/* ── Chat 里的任务卡答复：DSH 主题变量优先，自带深浅色兜底 ── */
+.dtc-trigger {
+  --dtc-trigger-bg: #f9fafb; --dtc-trigger-bg-hover: rgba(38, 49, 72, .06);
+  --dtc-trigger-border: rgba(0, 0, 0, .04); --dtc-trigger-heading: #81858c;
+  --dtc-trigger-text: #61666b; --dtc-trigger-caption: #adb2b8;
+  border: .5px solid var(--dsw-alias-border-l1, var(--dtc-trigger-border));
+  border-radius: var(--dsw-radius-xl, 12px); min-width: 0;
+  background: var(--dsw-alias-turn-trigger-bg, var(--dtc-trigger-bg));
+  transition: background-color .1s; }
+body[data-ds-dark-theme] .dtc-trigger {
+  --dtc-trigger-bg: rgba(255, 255, 255, .08); --dtc-trigger-bg-hover: rgba(255, 255, 255, .14);
+  --dtc-trigger-border: rgba(255, 255, 255, .06); --dtc-trigger-heading: #adb2b8;
+  --dtc-trigger-text: #cfd3d6; --dtc-trigger-caption: #81858c; }
+.dtc-trigger:hover { background: var(--dsw-alias-turn-trigger-bg-hover, var(--dtc-trigger-bg-hover)); }
+.dtc-trigger-header { width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border: 0; background: 0 0;
+  color: var(--dsw-alias-label-tertiary, var(--dtc-trigger-heading));
+  font: inherit; text-align: left; cursor: pointer; transition: color .1s; }
+.dtc-trigger-header:hover { color: var(--dsw-alias-label-secondary, var(--dtc-trigger-text)); }
+.dtc-trigger-icon { display: inline-flex; flex: none; }
+.dtc-trigger-title { font-size: var(--dsh-content-font-size, 14px); flex: none; }
+.dtc-trigger-time { margin-left: auto; flex: none; color: inherit; font: var(--dsw-font-xxs-12, 12px); }
+.dtc-trigger-chevron { display: inline-flex; flex: none; color: inherit; transition: transform .1s; }
+.dtc-trigger-chevron.is-open { transform: rotate(180deg); }
+.dtc-trigger-body { padding: 0 16px 12px 40px; }
+.dtc-trigger-explanation { margin: 8px 0;
+  color: var(--dsw-alias-label-secondary, var(--dtc-trigger-text));
+  font: var(--dsw-font-xxs-12, 12px); }
+.dtc-trigger-source { margin-bottom: 6px;
+  color: var(--dsw-alias-label-caption, var(--dtc-trigger-caption));
+  font: var(--dsw-font-xxs-12, 12px); }
+.dtc-trigger-content { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px;
+  overflow: auto; color: var(--dsw-alias-label-secondary, var(--dtc-trigger-text));
+  font: var(--dsw-font-xxs-12, 12px); }
+@media (prefers-reduced-motion: reduce) { .dtc-trigger, .dtc-trigger-header, .dtc-trigger-chevron { transition: none; } }
 `
 
 /** 注入样式；返回卸载函数。重复调用只会留一个 <style>。 */
