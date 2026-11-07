@@ -36,7 +36,7 @@ export function CardRow({ t, card, busy, onAction, onAnswer, onDetail, onRedecid
         <div className="dtc-text">{card.title}</div>
         {card.detail ? <div className="dtc-detail">{card.detail}</div> : null}
         {isDecision && !closed ? (
-          <span className="dtc-chip">{t(`ask_${card.ask || 'judgment'}`)}</span>
+          <span className="dtc-chip">{t(`ask_${card.ask || card.advice?.ask || 'judgment'}`)}</span>
         ) : null}
         <CardMeta t={t} card={card} closed={closed} />
         {isDecision && (card.advice || !closed) ? (

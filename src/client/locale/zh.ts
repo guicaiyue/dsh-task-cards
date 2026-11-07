@@ -68,6 +68,7 @@ export const zh: Record<string, string> = {
   cardAnswerTitle: '任务卡答复',
   cardAnswerExplanation: '这张卡把答复发回了原会话，触发了本轮回复。',
   cardAnswerSource: '来源卡片：{card}',
+  sourceTrigger: '触发输入',
   sourceUser: '你说过',
   sourceSystem: '系统代发',
   sourceSystemUnknown: '（未记录来源卡）',

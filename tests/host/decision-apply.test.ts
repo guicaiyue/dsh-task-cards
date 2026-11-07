@@ -49,6 +49,18 @@ describe('票拟写回', () => {
     ])
   })
 
+  it('票拟车道写回卡片顶层 ask，旧卡重拟后不再显示判断', async () => {
+    const store = new Store(tempFile())
+    const card = await store.create('要不要跑复现', { kind: 'decision', ask: 'judgment' })
+    const result = await applyAdvice(
+      store,
+      card,
+      makeDraft({ cardId: card.id, lane: 'decision', ask: 'permission', effect: 'read' }),
+    )
+    expect(result.card.ask).toBe('permission')
+    expect(result.card.advice?.ask).toBe('permission')
+  })
+
   it('info/auto 想升成 decision 不落盘，只在票拟里说明', async () => {
     const store = new Store(tempFile())
     const card = await store.create('也许要我拍板', { kind: 'info' })

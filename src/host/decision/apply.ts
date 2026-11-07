@@ -55,10 +55,11 @@ export async function applyAdvice(
   const nextKind = laneCorrection(card, draft)
   // 先记车道纠正（事件 lane:info），再写票拟；两条事件都能在卡上看到。
   if (nextKind) await cards.patch(card.id, { kind: nextKind }, 'lane:info')
-  const patched = await cards.patch(
-    card.id,
-    { advice: toAdvice(draft, nextKind !== null) },
-    'advised',
-  )
+  const advice = toAdvice(draft, nextKind !== null)
+  // 车道也要落回卡片顶层：面板行和详情块都读 card.ask，只写 advice.ask 会让
+  // 旧卡重拟后仍显示「判断」。
+  const patch: Partial<Card> = { advice }
+  if (draft.ask !== undefined) patch.ask = draft.ask
+  const patched = await cards.patch(card.id, patch, 'advised')
   return { card: patched, corrected: nextKind !== null }
 }

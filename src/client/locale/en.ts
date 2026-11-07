@@ -69,6 +69,7 @@ export const en: Record<string, string> = {
   cardAnswerExplanation:
     'This card delivered an answer back to the session and triggered this turn.',
   cardAnswerSource: 'Source card: {card}',
+  sourceTrigger: 'Trigger input',
   sourceUser: 'You said',
   sourceSystem: 'System-sent',
   sourceSystemUnknown: '(source card not recorded)',

@@ -15,6 +15,8 @@ interface Props {
 
 export function ModalCardBlock({ t, card, busy, onAction }: Props) {
   const closed = isClosed(card.status)
+  // 旧卡可能只被票拟纠正过车道，顶层 ask 还没回填；展示时以票拟为准。
+  const ask = card.ask || card.advice?.ask || 'judgment'
   return (
     <div className="dtc-card-block">
       <div className="dtc-card-block-title">{card.title}</div>
@@ -45,6 +47,12 @@ function SourceBlock({ t, card }: { t: Translate; card: Card }) {
   if (!origin) return null
   return (
     <div className="dtc-source-block">
+      {origin.triggerText ? (
+        <div className="dtc-source-row">
+          <span>{t('sourceTrigger')}</span>
+          <span>{origin.triggerText}</span>
+        </div>
+      ) : null}
       {origin.userQuote ? (
         <div className="dtc-source-row">
           <span>{t('sourceUser')}</span>
