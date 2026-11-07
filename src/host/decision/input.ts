@@ -47,6 +47,8 @@ interface DecisionCardRow {
   sourceCardId: string
   uiCardId: string
   relatedCardIds: string[]
+  /** 同会话最近卡的实际标题/车道，避免代理人只看到 id 就猜「三张旧卡」是哪三张。 */
+  relatedCards: Array<{ id: string; title?: string; kind?: string; status?: string }>
 }
 
 interface DecisionPrecedentRow {
@@ -65,7 +67,7 @@ function clip(value: unknown, max: number): string {
     .slice(0, max)
 }
 
-function cardRow(card: Card): DecisionCardRow {
+function cardRow(card: Card, lookup?: (id: string) => Card | undefined): DecisionCardRow {
   return {
     id: card.id,
     title: clip(card.title, 200),
@@ -82,6 +84,12 @@ function cardRow(card: Card): DecisionCardRow {
     sourceCardId: card.origin?.sourceCardId || '',
     uiCardId: card.origin?.uiCardId || '',
     relatedCardIds: (card.origin?.relatedCardIds || []).slice(0, 8),
+    relatedCards: (card.origin?.relatedCardIds || []).slice(0, 8).map((id) => {
+      const related = lookup?.(id)
+      return related
+        ? { id, title: clip(related.title, 120), kind: related.kind, status: related.status }
+        : { id }
+    }),
   }
 }
 
@@ -121,13 +129,17 @@ export function buildDecisionInput(
   precedents: Precedent[],
   limit: number,
   maxBytes: number = DECISION_INPUT_MAX_BYTES,
+  lookup?: (id: string) => Card | undefined,
 ): string {
   const usable = precedents
     .filter((item) => item.outcome !== 'reworked')
     .sort((left, right) => (right.at || 0) - (left.at || 0))
     .slice(0, Math.max(0, limit))
   const cardBudget = Math.max(300, maxBytes - WRAPPER_BYTES)
-  const cardsText = fitRows(cards.map(cardRow), cardBudget)
+  const cardsText = fitRows(
+    cards.map((card) => cardRow(card, lookup)),
+    cardBudget,
+  )
   const precedentBudget = Math.max(120, maxBytes - WRAPPER_BYTES - Buffer.byteLength(cardsText))
   const precedentsText = fitRows(usable.map(precedentRow), precedentBudget)
   const text = [

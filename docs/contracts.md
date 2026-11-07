@@ -115,7 +115,7 @@ precedent = { id, at, cardId, title, question, choice, outcome: unknown|valid|re
 | GET | `/workspaces` | 诊断：工作区里挂了哪些会话 |
 | GET | `/timeline` | 详情弹窗的时间线（`?id=`） |
 | GET | `/titles` | 批量取会话标题（`?ids=a,b`） |
-| GET/POST | `/decisions` | 判例 + 决策执行记录（`{precedents, records}`） / `mark-reworked`、`redecide` |
+| GET/POST | `/decisions` | 判例 + 决策执行记录（`{precedents, records}`） / `mark-reworked`、`redecide`、`preview`（只读预演，不写卡不投递） |
 
 错误统一为 `{ok:false, code, error}`：`400`（业务错误，code 稳定：`EMPTY_TITLE` `TITLE_TOO_LONG` `NOT_FOUND` `BAD_STATE` `MISSING_ID` `BAD_JSON` `BODY_TOO_LARGE` …）、`403`（跨站/非回环）、`405`（方法不对）、`500`（内部错误，带 `detail`）。
 

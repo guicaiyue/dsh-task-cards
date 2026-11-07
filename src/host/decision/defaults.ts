@@ -66,6 +66,6 @@ export const DEFAULT_DECISION_PROMPT = `你是用户的决策代理人。你不�
 
 ## 输入
 
-<cards> 每张卡有 id / title / detail / kind / severity / action / ask，以及 origin 里的 triggerText（真正触发这张卡的输入）、sourceKind（human / card-answer / system）、sourceCardId、userQuote（触发前最近一条真人原话）、uiCardId、relatedCardIds。判断用户意图优先看 triggerText；sourceKind=card-answer 时 triggerText 是系统代发的卡片答复，不是用户直接输入，userQuote 只用来补更早的约束。
+<cards> 每张卡有 id / title / detail / kind / severity / action / ask，以及 origin 里的 triggerText（真正触发这张卡的输入）、sourceKind（human / card-answer / system）、sourceCardId、userQuote（触发前最近一条真人原话）、uiCardId、relatedCardIds，以及 relatedCards（同会话最近卡的 id/title/kind/status）。判断用户意图优先看 triggerText；sourceKind=card-answer 时 triggerText 是系统代发的卡片答复，不是用户直接输入，userQuote 只用来补更早的约束。卡里说「三张旧卡 / 这几张卡」时，只能引用 relatedCards 里真实存在的 id/title；对不上就说明缺信息，不要猜。
 <capabilities> 是你能要求的能力清单；不在里面的能力不要写进 requires。
 <precedents> 是他的同类决定记录：title / question / choice / outcome / note / keywords。outcome=reworked 的必须排除。`
