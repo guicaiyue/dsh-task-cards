@@ -12,9 +12,9 @@
 | `agents.create({sessionId, meta:{cwd, agentPreset}, setup, agentOptions})` | → `{agent:{ctx}, dispose()}` | 建观察者会话 | 记录一条异常，跳过 |
 | `agentPresets.register(def)` | → `dispose()` | 注册只有提示词的空 preset | 观察者退回默认 preset（带工具） |
 | `agentPresets.select(agent, presetId)` / `composedPreset(ctx)` | 建会话后补选 preset | 兜底：factory 没认 `meta.agentPreset` | — |
-| `agents.get(sessionId).followup(message)` | `{id, role:'user', content:[{type:'text',text}], source:{kind:'dsh-task-cards', form:'notice', summary, cardId}}` | 实时会话的卡片作答：聊天显示成「非人类触发」通知，不是用户气泡 | 退回 `sessionController.prompt` |
-| `sessionController.agents.resolveAgent(sessionId)` | `{agent?: {followup}}` | 冷会话的卡片作答：先恢复成 live agent，再走 `followup`，保留自定义 source | 退回 `sessionController.prompt` |
-| `sessionController.prompt(request, signal)` | `{requestId, sessionId, mode:'queue', content:[{type:'text',text}]}` | 最后兜底；source 被宿主重写成 `user`，只靠文本标记识别 | 记异常 |
+| `agents.get(sessionId).followup(message)` | `{id, role:'user', content:[{type:'text',text}], source:{kind:'dsh-task-cards', form:'notice', summary, cardId}}` | 实时会话的卡片作答：聊天显示成「非人类触发」通知，不是用户气泡 | 先尝试 `agents.resolveAgent`，仍失败就保持卡片未投递 |
+| `sessionController.agents.resolveAgent(sessionId)` | `{agent?: {followup}}` | 冷会话的卡片作答：先恢复成 live agent，再走 `followup`，保留自定义 source | 拒绝投递并保留卡片（不伪装成用户） |
+| `sessionController.prompt(request, signal)` | `{requestId, sessionId, mode:'queue', content:[{type:'text',text}]}` | **仅老宿主**（没有 `agents.resolveAgent`）的最后兜底；source 被宿主重写成 `user`，只靠文本标记识别 | 当前 DSH 不走这条路 |
 | `sessionController.modelCatalog()` | → `{groups:[{id, models:[{id,name}]}], default}` | `/models` 让用户选模型 | 只能跟随默认模型 |
 | `agentDefaultModel.currentSelection()` | → `{provider, model, reasoningEffort?}` | 观察者默认模型 | 记录「没有可用模型」 |
 | `workspaceRegistry.create(path, title)` | → `{id,title,path,sessionIds,attachSession}` | 观察者会话挂到自己的 workspace | 侧栏看不到，观察照常 |
@@ -39,7 +39,7 @@
 
 ## 踩过的坑（升级时优先复现这几条）
 
-1. **`sessionController.prompt` 的第二个参数是必需的 `AbortSignal`**，不传宿主内部直接抛。它会把 source 固定成 `{kind:'user', rpcId}`，所以优先用 `sessionController.agents.resolveAgent` + `followup`，只有恢复失败才靠文本标记区分系统代发。
+1. **`sessionController.prompt` 的第二个参数是必需的 `AbortSignal`**，不传宿主内部直接抛。它会把 source 固定成 `{kind:'user', rpcId}`，所以优先用 `sessionController.agents.resolveAgent` + `followup`；恢复失败时不再用 prompt 伪装用户，而是保留卡片并报 `NO_AGENT`。只有完全没有 `resolveAgent` 的老宿主才退回文本标记。
 2. **`agents.get(id)` 只返回实时 agent**：冷会话返回 `undefined`。`followup(message)` 必须给完整 `{id, role:'user', content, source}`；`source.kind !== 'user'` 时 UI 才渲染成 `turn-trigger` 通知，`inject`/`steer` 的落点分别是 next-step/唤醒，卡片答复要用 `followup`（next-turn）。
 3. **给会话设了 `parentSession` 之后不能再直接投递 prompt**（会被判为 subagent routing）。观察者身份只靠 `subagent/descriptor` 事件表达。
 4. **`systemPrompt.section({complete:true})` 会独占整段系统提示词**；观察者 preset 里只挂这一个提示词插件，才不会混进默认 persona / skill。

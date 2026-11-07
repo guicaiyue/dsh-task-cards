@@ -42,6 +42,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 | 检查 | 期望 |
 | :-- | :-- |
 | 判断卡（`ask=judgment`） | 行上有「判断」chip；主按钮「批准」，详情展开票拟方案 |
+| 通用 source-kind | 非本插件的 `turn-trigger` 也走插件文案：`schedule` 显示「定时任务」、`webhook`+github 显示「GitHub 事件」、未知 kind 显示「其他来源」；深色/浅色都用同一套 token。 |
 | 许可卡（`ask=permission`） | 行上有「许可」chip；主按钮「批准并执行」、次按钮「拒绝」；详情显示「将执行 / 范围 / 影响 / 可撤回」；不可逆时行上变成「查看并确认」，详情必须勾选「我已知晓」才能点「批准并执行」 |
 | 澄清卡（`ask=clarification`） | 行上有「澄清」chip；主按钮「补充信息」；详情显示问题、候选按钮、输入框（输入前「提交」禁用） |
 | 来源块 | 详情里能看到「你说过」的真人原话；系统代发时显示「系统代发」和来源卡 id；面板打开着别的卡时显示「面板当时打开」 |
@@ -52,7 +53,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 | presence | 面板打开时每 20 s `POST /presence`，宿主返回 `{ok:true}`；打开卡片详情后心跳里带 `sessionId` / `openCardId` |
 | 观察者→卡片→决策代理端到端 | 真机新会话发一条 55 字决策请求：观察者建出 decision 卡，`origin.triggerText` 等于用户原话、`sourceKind=human`；redecide 后出票拟，`advice.ask=judgment`、`effect=read`、`requires=[session.reply]` |
 | 实时会话的卡片答复 | 批准后聊天里出现「任务卡答复」折叠块（不是用户气泡）；展开显示「这张卡把答复发回了原会话，触发了本轮回复」、来源卡片和去掉标记的正文，模型回复正常 |
-| 冷会话的卡片答复 | `agents.get` 返回空时先 `sessionController.agents.resolveAgent` 恢复再 `followup`，聊天仍显示「任务卡答复」通知；恢复失败才退回 `prompt` + 文本标记 |
+| 冷会话的卡片答复 | `agents.get` 返回空时先 `sessionController.agents.resolveAgent` 恢复再 `followup`，聊天仍显示「任务卡答复」通知；恢复失败保留卡片并报 `NO_AGENT`，不再伪装成用户消息 |
 
 ## 3. 观察者（可选，会产生真实模型调用）
 

@@ -63,10 +63,19 @@ export async function answerQuestion(
   // 「非人类触发」通知，而不是用户气泡；冷会话再退回 sessionController.prompt。
   if (tryLiveAgent(card, text, sessionId, ctx)) return { via: 'agent', answered: true }
   // 冷会话：先用宿主的 resolveAgent 恢复，再走同一个 followup，source 不会被改写。
-  if (await tryResumeAgent(card, text, sessionId, ctx)) return { via: 'agent', answered: true }
-  if (!ctx?.sessionController) throw new StoreError('NO_RUNTIME', '宿主缺少 sessionController')
-  await deliverViaPrompt(card, text, sessionId, ctx.sessionController)
-  return { via: 'prompt', answered: true }
+  const resumed = await tryResumeAgent(card, text, sessionId, ctx)
+  if (resumed.ok) return { via: 'agent', answered: true }
+  // 只有完全没有 agent 恢复能力的老宿主才允许走 prompt；当前 DSH 有 resolveAgent，不会到这里。
+  if (ctx?.sessionController && !ctx.sessionController.agents?.resolveAgent) {
+    await deliverViaPrompt(card, text, sessionId, ctx.sessionController)
+    return { via: 'prompt', answered: true }
+  }
+  // 不再退回 sessionController.prompt：宿主会把 source 重写成 user，
+  // 等于把系统通知伪装成用户发言。宁可失败，也不污染会话。
+  throw new StoreError(
+    'NO_AGENT',
+    `目标会话无法恢复为 agent，未投递（拒绝伪装成用户输入）${resumed.reason ? `：${resumed.reason}` : ''}`,
+  )
 }
 
 /** 实时 agent 存在就 followup；返回是否已投递。 */
@@ -92,17 +101,17 @@ async function tryResumeAgent(
   text: string,
   sessionId: string,
   ctx: HostRuntime | null,
-): Promise<boolean> {
+): Promise<{ ok: boolean; reason?: string }> {
   const resolve = ctx?.sessionController?.agents?.resolveAgent
-  if (typeof resolve !== 'function') return false
+  if (typeof resolve !== 'function') return { ok: false, reason: '宿主没有 resolveAgent' }
   try {
     const resolved = await resolve(sessionId)
     const agent = resolveAgentOf(resolved)
-    if (!agent?.followup) return false
+    if (!agent?.followup) return { ok: false, reason: 'resolveAgent 没有返回可投递 agent' }
     agent.followup(cardAnswerMessage(card, text))
-    return true
-  } catch {
-    return false
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, reason: (err as Error)?.message || String(err) }
   }
 }
 
@@ -116,7 +125,7 @@ function resolveAgentOf(value: unknown): AgentLike | undefined {
       : undefined
 }
 
-/** 最后兜底：sessionController.prompt 会把 source 重写成 user，只能靠文本标记。 */
+/** 仅老宿主兜底：sessionController.prompt 会把 source 写成 user，不能用在有 resolveAgent 的宿主上。 */
 async function deliverViaPrompt(
   card: Card,
   text: string,

@@ -82,7 +82,7 @@ describe('任务卡答复投递', () => {
     expect(captured?.content[0]?.text).toContain('允许一次')
   })
 
-  it('实时 agent 刚关掉：退回 prompt，仍带文本标记', async () => {
+  it('实时 agent 刚关掉且无法恢复：拒绝投递，不伪装成用户输入', async () => {
     const prompts: Array<{ text: string; source?: unknown }> = []
     const ctx = {
       agents: {
@@ -97,12 +97,17 @@ describe('任务卡答复投递', () => {
           prompts.push({ text: request.content[0]?.text || '', source: request.source })
           return {}
         },
+        agents: {
+          async resolveAgent() {
+            throw new Error('会话已经结束')
+          },
+        },
       },
     } as unknown as HostRuntime
 
-    const result = await answerQuestion(card(), '允许一次', ctx)
-    expect(result.via).toBe('prompt')
-    expect(prompts[0]?.text).toContain('〔任务卡答复 c-1')
-    expect(prompts[0]?.text).toContain('允许一次')
+    await expect(answerQuestion(card(), '允许一次', ctx)).rejects.toMatchObject({
+      code: 'NO_AGENT',
+    })
+    expect(prompts).toHaveLength(0)
   })
 })

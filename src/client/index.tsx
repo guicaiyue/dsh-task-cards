@@ -12,6 +12,7 @@ import {
   TaskCardAnswerNodeView,
   taskCardAnswerDefinition,
 } from './chat/taskCardAnswer'
+import { GenericTurnTriggerNodeView } from './chat/turnTrigger'
 import { Panel } from './components/Panel'
 import { PanelIcon } from './components/PanelIcon'
 import { NS, PANEL_ID } from './constants'
@@ -60,6 +61,13 @@ export function apply(ctx: ClientContext): void {
     ctx.slots.register(
       { name: 'conversation.chat.node', key: TASK_CARD_NODE_KIND, locale: NS },
       TaskCardAnswerNodeView as unknown as (owner?: SlotOwner) => unknown,
+    ),
+  )
+  // 通用 source-kind 文案：复用内置 turn-trigger 这个 key，替换它的渲染。
+  ctx.slots.inject('conversation.chat.node', () =>
+    ctx.slots.register(
+      { name: 'conversation.chat.node', key: 'turn-trigger', locale: NS, priority: -1 },
+      GenericTurnTriggerNodeView as unknown as (owner?: SlotOwner) => unknown,
     ),
   )
 

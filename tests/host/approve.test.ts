@@ -56,13 +56,23 @@ function harness(mode: PromptMode = 'ok'): Harness {
   }
   if (mode !== 'missing') {
     ctx.sessionController = {
-      async prompt(request: { sessionId: string; content: Array<{ text: string }> }) {
-        if (mode === 'throw') throw new Error('目标会话已经结束')
-        prompts.push({
-          sessionId: request.sessionId,
-          text: request.content.map((block) => block.text).join('\n'),
-        })
-        return { ok: true }
+      async prompt() {
+        throw new Error('不该走 prompt：冷会话应 resolveAgent 后 followup')
+      },
+      agents: {
+        async resolveAgent(sessionId: string) {
+          if (mode === 'throw') throw new Error('目标会话已经结束')
+          return {
+            agent: {
+              followup(message: { content: Array<{ text?: string }> }) {
+                prompts.push({
+                  sessionId,
+                  text: message.content.map((block) => block.text || '').join('\n'),
+                })
+              },
+            },
+          }
+        },
       },
     }
   }
