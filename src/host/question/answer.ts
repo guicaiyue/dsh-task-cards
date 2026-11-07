@@ -3,7 +3,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Card } from '../../shared/contract'
 import { StoreError } from '../cards/store'
-import type { AgentMessageLike, HostRuntime } from '../host-api'
+import type { AgentLike, AgentMessageLike, HostRuntime } from '../host-api'
 import { asRecord } from '../host-api'
 import { findAskCallId } from './record'
 import type { CardQuestion } from './types'
@@ -62,6 +62,8 @@ export async function answerQuestion(
   // 优先走实时 agent 的 followup：它接受自定义 source，聊天里会显示成
   // 「非人类触发」通知，而不是用户气泡；冷会话再退回 sessionController.prompt。
   if (tryLiveAgent(card, text, sessionId, ctx)) return { via: 'agent', answered: true }
+  // 冷会话：先用宿主的 resolveAgent 恢复，再走同一个 followup，source 不会被改写。
+  if (await tryResumeAgent(card, text, sessionId, ctx)) return { via: 'agent', answered: true }
   if (!ctx?.sessionController) throw new StoreError('NO_RUNTIME', '宿主缺少 sessionController')
   await deliverViaPrompt(card, text, sessionId, ctx.sessionController)
   return { via: 'prompt', answered: true }
@@ -84,7 +86,37 @@ function tryLiveAgent(
   }
 }
 
-/** 冷会话兜底：sessionController.prompt 会把 source 重写成 user，只能靠文本标记。 */
+/** 冷会话恢复后再 followup：保留自定义 source，聊天仍显示成非人类触发。 */
+async function tryResumeAgent(
+  card: Card,
+  text: string,
+  sessionId: string,
+  ctx: HostRuntime | null,
+): Promise<boolean> {
+  const resolve = ctx?.sessionController?.agents?.resolveAgent
+  if (typeof resolve !== 'function') return false
+  try {
+    const resolved = await resolve(sessionId)
+    const agent = resolveAgentOf(resolved)
+    if (!agent?.followup) return false
+    agent.followup(cardAnswerMessage(card, text))
+    return true
+  } catch {
+    return false
+  }
+}
+
+function resolveAgentOf(value: unknown): AgentLike | undefined {
+  const record = asRecord(value)
+  const nested = asRecord(record.agent)
+  return nested.followup
+    ? (nested as unknown as AgentLike)
+    : record.followup
+      ? (record as unknown as AgentLike)
+      : undefined
+}
+
+/** 最后兜底：sessionController.prompt 会把 source 重写成 user，只能靠文本标记。 */
 async function deliverViaPrompt(
   card: Card,
   text: string,

@@ -475,7 +475,12 @@ describe('决策会话', () => {
     const target = await cards.create('是哪张卡', {
       kind: 'decision',
       ask: 'clarification',
-      origin: { sessionId: ORIGIN, reason: '指代不明', uiCardId: 'c-other' },
+      origin: {
+        sessionId: ORIGIN,
+        reason: '指代不明',
+        uiCardId: 'c-other',
+        relatedCardIds: ['c-other'],
+      },
     })
     const payload = JSON.stringify({
       decisions: [
@@ -503,6 +508,42 @@ describe('决策会话', () => {
     const delivered = host.prompts.filter((item) => item.sessionId === ORIGIN)
     expect(delivered).toHaveLength(1)
     expect(delivered[0]?.text).toContain('补充信息：c-other')
+  })
+
+  it('面板开着的卡不在最近卡里：不自动替答，保留澄清卡', async () => {
+    const { decision, cards, host } = rig()
+    const target = await cards.create('是哪张卡', {
+      kind: 'decision',
+      ask: 'clarification',
+      origin: {
+        sessionId: ORIGIN,
+        reason: '指代不明',
+        uiCardId: 'c-unrelated',
+        relatedCardIds: ['c-1', 'c-2'],
+      },
+    })
+    const payload = JSON.stringify({
+      decisions: [
+        {
+          cardId: target.id,
+          lane: 'decision',
+          ask: 'clarification',
+          verdict: 'wait',
+          question: '你指的是哪张卡？',
+          chosen: 0,
+          autoApply: false,
+          options: [],
+          basis: '无同类判例',
+          confidence: 'normal',
+        },
+      ],
+    })
+    replyWith(decision, host, payload)
+    const result = await decision.run([target.id])
+    expect(result.applied).toBe(0)
+    const after = cards.find(target.id)
+    expect(after?.status).toBe('open')
+    expect(after?.advice?.ask).toBe('clarification')
   })
 
   it('listByPhase 只挑决策记录，观察者记录不进 /decisions', async () => {

@@ -56,6 +56,32 @@ describe('任务卡答复投递', () => {
     expect(captured?.content[0]?.text).toContain('允许一次')
   })
 
+  it('冷会话：先 resolveAgent 恢复，再 followup，source 仍是插件通知', async () => {
+    let captured: AgentMessageLike | undefined
+    const ctx = {
+      agents: { get: () => undefined },
+      sessionController: {
+        prompt: () => {
+          throw new Error('恢复成功就不该走 prompt')
+        },
+        agents: {
+          resolveAgent: async () => ({
+            agent: {
+              followup: (message: AgentMessageLike) => {
+                captured = message
+              },
+            },
+          }),
+        },
+      },
+    } as unknown as HostRuntime
+
+    const result = await answerQuestion(card(), '允许一次', ctx)
+    expect(result.via).toBe('agent')
+    expect(captured?.source).toMatchObject({ kind: 'dsh-task-cards', cardId: 'c-1' })
+    expect(captured?.content[0]?.text).toContain('允许一次')
+  })
+
   it('实时 agent 刚关掉：退回 prompt，仍带文本标记', async () => {
     const prompts: Array<{ text: string; source?: unknown }> = []
     const ctx = {

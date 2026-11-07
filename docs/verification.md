@@ -48,8 +48,9 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 | 自动执行闸门 | `advice.blockedReasons` 非空时，详情显示人话原因（缺能力 / 指代不明 / 影响等级不是只读） |
 | 旧卡兼容 | 没有 `ask` 的历史卡按「判断」显示，不出现 `ask_undefined` |
 | presence | 面板打开时每 20 s `POST /presence`，宿主返回 `{ok:true}`；打开卡片详情后心跳里带 `sessionId` / `openCardId` |
+| 观察者→卡片→决策代理端到端 | 真机新会话发一条 55 字决策请求：观察者建出 decision 卡，`origin.triggerText` 等于用户原话、`sourceKind=human`；redecide 后出票拟，`advice.ask=judgment`、`effect=read`、`requires=[session.reply]` |
 | 实时会话的卡片答复 | 批准后聊天里出现「任务卡答复」折叠块（不是用户气泡）；展开显示「这张卡把答复发回了原会话，触发了本轮回复」、来源卡片和去掉标记的正文，模型回复正常 |
-| 冷会话的卡片答复 | `agents.get` 返回空时退回 `sessionController.prompt`；消息仍是用户气泡，但文本带 `〔任务卡答复 …〕` 标记 |
+| 冷会话的卡片答复 | `agents.get` 返回空时先 `sessionController.agents.resolveAgent` 恢复再 `followup`，聊天仍显示「任务卡答复」通知；恢复失败才退回 `prompt` + 文本标记 |
 
 ## 3. 观察者（可选，会产生真实模型调用）
 

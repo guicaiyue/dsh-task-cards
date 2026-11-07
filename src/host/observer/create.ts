@@ -2,23 +2,45 @@
 //
 // 「免打扰」只有一种来源：用户在原会话里已经看过这条内容（见 seen.ts）。
 // 而且只对 info 卡成立——决策卡永远要人回应，自动卡到点还要执行。
+//
+// 另有一条硬门禁：这一轮如果是系统代发的卡片答复触发的，用户本人并没有说话，
+// 就没有「他的意图」可判断。此时观察者给的 judgment 卡一律降成 info——把系统
+// 自指的空转做成需要人拍板的决策，正是最初那次「信息断层」。
 
-import type { CardDraft, CardOrigin } from '../../shared/contract'
+import type { CardDraft, CardKind, CardOrigin } from '../../shared/contract'
 import type { CreateCardOptions } from '../cards/store'
+
+/** 系统代发触发的回合里，judgment 车道没有现实依据。 */
+export function laneGate(
+  draft: CardDraft,
+  origin: CardOrigin,
+): { kind: CardKind; downgraded: boolean } {
+  const systemTriggered = origin.sourceKind === 'card-answer'
+  if (systemTriggered && draft.kind === 'decision' && (draft.ask ?? 'judgment') === 'judgment') {
+    return { kind: 'info', downgraded: true }
+  }
+  return { kind: draft.kind, downgraded: false }
+}
 
 export function draftCreateOptions(
   draft: CardDraft,
   origin: CardOrigin,
   seen: boolean,
 ): CreateCardOptions {
+  const lane = laneGate(draft, origin)
   return {
-    detail: draft.detail,
-    kind: draft.kind,
+    detail: lane.downgraded
+      ? `${draft.detail}${draft.detail ? '\n' : ''}（本轮由系统代发的卡片答复触发，没有用户本人的意图可判断，已降为通知。）`.slice(
+          0,
+          1000,
+        )
+      : draft.detail,
+    kind: lane.kind,
     severity: draft.severity,
     action: draft.action,
     source: 'agent',
     ask: draft.ask ?? 'judgment',
     origin,
-    silent: seen && draft.kind === 'info',
+    silent: seen && lane.kind === 'info',
   }
 }

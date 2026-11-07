@@ -74,8 +74,17 @@ export interface AgentHandleLike {
   dispose(): unknown
 }
 
+export interface ResolvedAgentLike {
+  agent?: AgentLike
+  error?: unknown
+}
+
 export interface SessionControllerLike {
   prompt(request: PromptRequest, signal: AbortSignal): Promise<unknown>
+  /** 冷会话恢复入口（宿主用来把持久会话重新变成 live agent）。 */
+  agents?: {
+    resolveAgent?(sessionId: string): Promise<ResolvedAgentLike | AgentLike | undefined>
+  }
   modelCatalog?(): Promise<ModelCatalog | null>
 }
 

@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_SETTINGS } from '../../src/host/cards/defaults'
-import { draftCreateOptions } from '../../src/host/observer/create'
+import { draftCreateOptions, laneGate } from '../../src/host/observer/create'
 import type { Observer } from '../../src/host/observer/observer'
 import { SeenTracker } from '../../src/host/observer/seen'
 import type { ObserverTurnInput } from '../../src/host/observer/session'
@@ -42,6 +42,29 @@ describe('draftCreateOptions', () => {
     severity: 'normal',
     action: null,
     reason: '',
+  })
+
+  it('系统代发触发时，judgment 卡硬降为 info；许可/澄清不降', () => {
+    const system = { ...origin, sourceKind: 'card-answer' as const }
+    expect(laneGate({ ...draft('decision'), ask: 'judgment' }, system)).toEqual({
+      kind: 'info',
+      downgraded: true,
+    })
+    expect(laneGate({ ...draft('decision'), ask: 'permission' }, system)).toEqual({
+      kind: 'decision',
+      downgraded: false,
+    })
+    expect(laneGate({ ...draft('decision'), ask: 'clarification' }, system)).toEqual({
+      kind: 'decision',
+      downgraded: false,
+    })
+    expect(laneGate({ ...draft('decision'), ask: 'judgment' }, origin)).toEqual({
+      kind: 'decision',
+      downgraded: false,
+    })
+    const downgraded = draftCreateOptions({ ...draft('decision'), ask: 'judgment' }, system, false)
+    expect(downgraded.kind).toBe('info')
+    expect(String(downgraded.detail)).toContain('已降为通知')
   })
 
   it('已看过 + info → 免打扰；决策卡即使已看过也不免打扰', () => {
