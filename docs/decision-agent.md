@@ -36,8 +36,8 @@ parse → 写回 card.advice（事件 advised）
 `kind=decision` 还不够具体；决策代理人再标一层 `ask`：
 
 - `judgment`：有 A/B 两个以上方向要比较。给 2–3 个方案，每个写成本 / 长期收益 / 最坏情况。
-- `permission`：只有一个已定动作，等用户 yes/no（提交、改代码、推送、删除、花钱、对外发消息）。不给替代设计，只给 `action` / `scope` / `effect` / `reversible`；面板显示「允许一次 / 拒绝」，两句话都由宿主模板生成。
-- `clarification`：只缺一条事实/指代（是哪张卡、哪个文件、哪个账号）。不给方案，只给 `question` + `candidates`；面板给候选按钮和输入框，答复会拼成「补充信息：…。这是对「…」的回答，继续。」。如果卡片 `origin.uiCardId` 非空（建卡时面板正打开着另一张卡），宿主会直接用这张卡的 id 作为答案并自动投递，不再问用户；模型也可以主动把 `answer`、`effect=read`、`autoApply=true` 写出来。
+- `permission`：只有一个已定动作，等用户 yes/no（提交、改代码、推送、删除、花钱、对外发消息）。不给替代设计，只给 `action` / `scope` / `effect` / `reversible`；面板显示「将执行 / 范围 / 影响 / 可撤回」，主按钮「批准并执行」、次按钮「拒绝」，两句话都由宿主模板生成。不可逆或对外/花钱的许可卡（`reversible=false` 或 `effect=destructive/external/spend`）在行上只给「查看并确认」，详情里必须勾选「我已知晓」才会解禁，防止误点。
+- `clarification`：只缺一条事实/指代（是哪张卡、哪个文件、哪个账号）。不给方案，只给 `question` + `candidates`；面板给候选按钮和输入框，答复会拼成「补充信息：…。这是对「…」的回答，继续。」。如果卡片 `origin.uiCardId` 非空且能对上（等于 `sourceCardId`，或最近卡里唯一一张），宿主会直接用这张卡的 id 作为答案并自动投递，不再问用户；面板开着无关卡时保留澄清；模型也可以主动把 `answer`、`effect=read`、`autoApply=true` 写出来。
 
 拿不准时：judgment/permission 拿不准选 permission（少让人做设计）；permission/clarification 拿不准选 clarification（只补信息）。
 
@@ -45,10 +45,11 @@ parse → 写回 card.advice（事件 advised）
 
 `autoApply=true` 只是候选，真正投递前还要过 `decision/answer-guard.ts`：
 
-1. `effect` 必须是 `read`；`write-code` / `destructive` / `external` / `spend` 一律拦。
+1. `effect` 必须是 `read`；例外是可撤销的诊断性 `write-code`（日志/插桩/复测/只读检查，且不含 commit/push/删除/发布），它会自动放行并把卡标完成，不劳用户点头。`destructive` / `external` / `spend` 一律拦。
 2. `requires` 必须全在当前能力清单里（`session.reply` / `cards.complete` / `cards.acknowledge` / `cards.dismiss`）；插件没有写卡片正文的接口，所以 `cards.append` / `cards.write-body` 会被拦。
 3. `answer` 必须能独立成立：不得出现「这张卡 / 上一张 / 刚才那张」这类没有具体目标的指代；需要指代时写卡片 id 或标题。
 4. 必须有 `origin.sessionId`，否则没有可投递的会话。
+5. 卡里说「三张旧卡 / 这几张卡」却没有任何卡片 id 时，`decision/reference.ts` 会把它强制改成澄清，问清是哪几张，不允许批准一个对象不明的动作。
 
 任何一条不满足：不投递，把原因写进 `advice.blockedReasons`，面板详情直接显示；人工批准只拦「不存在的能力」，不拦指代。自动执行成功/失败都不写判例。
 

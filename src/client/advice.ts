@@ -3,6 +3,7 @@
 // 词条全部在 locale/{zh,en}.ts（值必须是字符串）；这里只拼键名，不写中文。
 
 import type {
+  Advice,
   AdviceVerdict,
   Card,
   CardKind,
@@ -64,6 +65,17 @@ export function blockedReasonLabel(t: Translate, reason: string): string {
   if (reason.startsWith('effect:'))
     return t('blockedEffect', { effect: effectLabel(t, reason.slice(7)) })
   return t('blockedGeneric', { reason })
+}
+
+/** 不可逆 / 对外 / 花钱：必须让用户显式确认，不能一个误点就过。 */
+export function needsExplicitConfirm(advice?: Advice | null): boolean {
+  if (!advice) return false
+  return (
+    advice.effect === 'destructive' ||
+    advice.effect === 'external' ||
+    advice.effect === 'spend' ||
+    advice.reversible === false
+  )
 }
 
 /** 系统是否已经替用户执行过这张卡的票拟（宿主写 advice-applied 事件）。 */

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { isClosed } from '../../shared/state'
-import { blockedReasonLabel, effectLabel } from '../advice'
+import { blockedReasonLabel, effectLabel, needsExplicitConfirm } from '../advice'
 import type { Card, CardActionName, Translate } from '../types'
 import { QuestionOptions } from './QuestionOptions'
 
@@ -31,9 +31,9 @@ export function ModalCardBlock({ t, card, busy, onAction }: Props) {
       />
       {closed ? (
         <div className="dtc-hint">{t('alreadyClosed')}</div>
-      ) : card.ask === 'permission' ? (
+      ) : ask === 'permission' ? (
         <PermissionBlock t={t} card={card} busy={busy} onAction={onAction} />
-      ) : card.ask === 'clarification' ? (
+      ) : ask === 'clarification' ? (
         <ClarificationBlock t={t} card={card} busy={busy} onAction={onAction} />
       ) : (
         <CardBlockActions t={t} card={card} busy={busy} onAction={onAction} />
@@ -53,7 +53,7 @@ function SourceBlock({ t, card }: { t: Translate; card: Card }) {
           <span>{origin.triggerText}</span>
         </div>
       ) : null}
-      {origin.userQuote ? (
+      {origin.userQuote && origin.userQuote !== origin.triggerText ? (
         <div className="dtc-source-row">
           <span>{t('sourceUser')}</span>
           <span>{origin.userQuote}</span>
@@ -80,6 +80,8 @@ function SourceBlock({ t, card }: { t: Translate; card: Card }) {
 
 function PermissionBlock({ t, card, busy, onAction }: Props) {
   const advice = card.advice
+  const [confirmed, setConfirmed] = useState(false)
+  const risky = needsExplicitConfirm(advice)
   return (
     <div className="dtc-permission">
       <div className="dtc-permission-title">{t('permissionWillDo')}</div>
@@ -98,14 +100,25 @@ function PermissionBlock({ t, card, busy, onAction }: Props) {
           })}
         </div>
       ) : null}
+      {risky ? (
+        <label className="dtc-confirm">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            disabled={busy}
+            onChange={(event) => setConfirmed(event.target.checked)}
+          />
+          <span>{t('confirmRisk')}</span>
+        </label>
+      ) : null}
       <div className="dtc-actions">
         <button
           type="button"
           className="dtc-btn is-primary"
-          disabled={busy}
+          disabled={busy || (risky && !confirmed)}
           onClick={() => onAction(card, 'approve')}
         >
-          {t('allowOnce')}
+          {t('approveAndRun')}
         </button>
         <button
           type="button"

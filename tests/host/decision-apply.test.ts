@@ -61,6 +61,38 @@ describe('票拟写回', () => {
     expect(result.card.advice?.ask).toBe('permission')
   })
 
+  it('可逆的诊断性许可卡自动放行；提交类仍需人批', async () => {
+    const store = new Store(tempFile())
+    const card = await store.create('加日志复测', { kind: 'decision', ask: 'permission' })
+    const diagnostic = await applyAdvice(
+      store,
+      card,
+      makeDraft({
+        cardId: card.id,
+        ask: 'permission',
+        effect: 'write-code',
+        reversible: true,
+        action: '加一行临时日志后复测，跑完移除',
+        scope: '仅日志插桩',
+      }),
+    )
+    expect(diagnostic.card.advice?.autoApply).toBe(true)
+
+    const commit = await applyAdvice(
+      store,
+      card,
+      makeDraft({
+        cardId: card.id,
+        ask: 'permission',
+        effect: 'write-code',
+        reversible: true,
+        action: 'git commit 22 个文件',
+        scope: 'workspace',
+      }),
+    )
+    expect(commit.card.advice?.autoApply).toBe(false)
+  })
+
   it('info/auto 想升成 decision 不落盘，只在票拟里说明', async () => {
     const store = new Store(tempFile())
     const card = await store.create('也许要我拍板', { kind: 'info' })

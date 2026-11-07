@@ -36,6 +36,8 @@ export interface AttemptOptions {
   attempt: number
   waiter: Waiter
   log: Log
+  /** 覆盖设置里的 timeoutMs；批量卡时按张数放大。 */
+  timeoutMs?: number
 }
 
 function messageOf(err: unknown): string {
@@ -154,9 +156,10 @@ export async function runDecisionAttempt({
   attempt,
   waiter,
   log,
+  timeoutMs,
 }: AttemptOptions): Promise<DecisionAttempt> {
   const sessionId = decisionSessionId(attempt)
-  const expects = waiter.expect(sessionId, config.timeoutMs)
+  const expects = waiter.expect(sessionId, timeoutMs ?? config.timeoutMs)
   const controller = new AbortController()
   let handle: AgentHandleLike | null = null
   try {

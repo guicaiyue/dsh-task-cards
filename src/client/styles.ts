@@ -231,6 +231,7 @@ body[data-ds-dark-theme] .dtc-unread-dot-ring { fill: var(--dsw-specific-sidebar
 .dtc-permission-title { font-size: 11.5px; color: var(--dtc-faint); }
 .dtc-permission-action { font-size: 12.5px; line-height: 1.5; color: var(--dtc-ink); }
 .dtc-permission-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--dtc-muted); }
+.dtc-confirm { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.5; color: var(--dtc-danger); }
 .dtc-input { flex: 1; min-width: 120px; padding: 5px 8px; border-radius: 6px;
   border: 1px solid var(--dtc-border); background: var(--dtc-surface); color: var(--dtc-ink);
   font-size: 12px; }

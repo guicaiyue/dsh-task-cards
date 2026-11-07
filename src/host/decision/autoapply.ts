@@ -15,6 +15,7 @@ import type { Store } from '../cards/store'
 import type { HostRuntime, Log } from '../host-api'
 import { deliverToOrigin } from '../question/deliver'
 import { checkAnswer } from './answer-guard'
+import { permissionAnswer } from './templates'
 
 /** 卡上记的事件类型：自动执行成功是 advice-applied，失败是 advice-applied:failed。 */
 export const ADVICE_APPLIED_EVENT = 'advice-applied'
@@ -37,7 +38,9 @@ export function chosenAnswerOf(card: Card): string {
 
 export async function autoApplyAdvice(deps: AutoApplyDeps, card: Card): Promise<boolean> {
   if (!deps.allowed || !card.advice?.autoApply) return false
-  const text = chosenAnswerOf(card)
+  // 许可卡通常没有 answer；自动放行的诊断性改动用固定许可模板，不交给模型自由发挥。
+  const text =
+    chosenAnswerOf(card) || (card.advice?.ask === 'permission' ? permissionAnswer(card, true) : '')
   if (!text || isClosed(card.status) || !card.origin?.sessionId) return false
   const check = checkAnswer(card, text)
   if (!check.ok) {

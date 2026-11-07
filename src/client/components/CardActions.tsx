@@ -3,6 +3,7 @@
 // 观察者写的 info 卡是通知：看到即已读（CardRow 里自动 acknowledge），
 // 不给「知道了 / 忽略」这种没有行为差异的二选一。人手写的备忘才需要自己勾掉。
 
+import { needsExplicitConfirm } from '../advice'
 import type { Card, CardActionName, Translate } from '../types'
 
 export interface CardHandlers {
@@ -17,34 +18,40 @@ interface Props extends CardHandlers {
   closed: boolean
 }
 
-/** 主操作：决策卡批准、手写备忘知道了、自动卡立即执行。通知卡没有主操作。 */
-function PrimaryAction({ t, card, busy, onAction, onDetail }: Props) {
-  if (card.kind === 'decision') {
-    if (card.ask === 'clarification') {
-      return (
-        <button
-          type="button"
-          className="dtc-btn is-primary"
-          disabled={busy}
-          onClick={() =>
-            onDetail({ card, title: card.title, sessionId: card.origin?.sessionId || '' })
-          }
-        >
-          {t('clarifyOpen')}
-        </button>
-      )
-    }
+/** 决策卡主操作：澄清/高风险确认先看详情，其余直接批准并执行。 */
+function DecisionPrimary({ t, card, busy, onAction, onDetail }: Props) {
+  const openDetail = () =>
+    onDetail({ card, title: card.title, sessionId: card.origin?.sessionId || '' })
+  if (card.ask === 'clarification') {
     return (
-      <button
-        type="button"
-        className="dtc-btn is-primary"
-        disabled={busy}
-        onClick={() => onAction(card, 'approve')}
-      >
-        {card.ask === 'permission' ? t('allowOnce') : t('approve')}
+      <button type="button" className="dtc-btn is-primary" disabled={busy} onClick={openDetail}>
+        {t('clarifyOpen')}
       </button>
     )
   }
+  if (card.ask === 'permission' && needsExplicitConfirm(card.advice)) {
+    return (
+      <button type="button" className="dtc-btn is-primary" disabled={busy} onClick={openDetail}>
+        {t('confirmInDetail')}
+      </button>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className="dtc-btn is-primary"
+      disabled={busy}
+      onClick={() => onAction(card, 'approve')}
+    >
+      {card.ask === 'permission' ? t('approveAndRun') : t('approve')}
+    </button>
+  )
+}
+
+/** 主操作：决策卡批准、手写备忘知道了、自动卡立即执行。通知卡没有主操作。 */
+function PrimaryAction(props: Props) {
+  const { t, card, busy, onAction } = props
+  if (card.kind === 'decision') return <DecisionPrimary {...props} />
   if (card.kind === 'auto') {
     return (
       <button

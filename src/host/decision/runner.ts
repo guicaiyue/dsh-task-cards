@@ -18,6 +18,7 @@ import { buildDecisionInput } from './input'
 import { type AdviceDraft, parseAdvice } from './parse'
 import { type DecisionPreview, previewDecision } from './preview'
 import { addDecisionRecord, type DecisionRecordStatus } from './record'
+import { guardVagueReference } from './reference'
 import { type DecisionAttempt, runDecisionAttempt } from './session'
 
 export interface DecisionRunResult {
@@ -127,6 +128,8 @@ export class Decision {
       (id) => this.#cards.find(id),
     )
     const knownIds = new Set(cards.map((card) => card.id))
+    // 一张卡约 10-15s；批量时按张数放大，避免 3 张就撞 60s 超时。
+    const timeoutMs = Math.min(180000, config.timeoutMs + Math.max(0, cards.length - 1) * 30000)
     let last: DecisionAttempt | null = null
     let parseFailed = false
     for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -137,6 +140,7 @@ export class Decision {
         attempt,
         waiter: this.waiter,
         log: this.#log,
+        timeoutMs,
       })
       parseFailed = false
       const drafts = last.kind === 'ok' ? parseAdvice(last.text, knownIds) : null
@@ -202,7 +206,7 @@ export class Decision {
       const card = byId.get(draft.cardId)
       if (!card) continue
       try {
-        const resolved = resolveClarification(card, draft)
+        const resolved = resolveClarification(card, guardVagueReference(card, draft))
         const result = await applyAdvice(this.#cards, card, resolved)
         advised += 1
         if (result.corrected) corrected += 1
