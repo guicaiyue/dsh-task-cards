@@ -8,6 +8,7 @@
 import type { Card, ObserverRecord } from '../../shared/contract'
 import type { RecordStore, SettingsStore, Store } from '../cards/store'
 import type { HostRuntime, Log } from '../host-api'
+import { draftCreateOptions } from './create'
 import { buildPayload } from './payload'
 import {
   type ObserverTurnInput,
@@ -25,6 +26,8 @@ export interface ObserverOptions {
   log?: Log
   /** 建卡成功后的回调（决策阶段接手这批卡）；不允许阻塞观察者的记录落盘。 */
   onCardsCreated?: (cards: Card[]) => void
+  /** 建卡时判断「游标之后用户又回到原会话说过话」——听过看过的通知不再提醒。 */
+  seenSince?: (sessionId: string, mark: number) => boolean
 }
 
 export class Observer {
@@ -35,15 +38,25 @@ export class Observer {
   readonly #records: RecordStore
   readonly #log: Log
   readonly #onCardsCreated: ((cards: Card[]) => void) | undefined
+  readonly #seenSince: ((sessionId: string, mark: number) => boolean) | undefined
   #queue: Promise<unknown> = Promise.resolve()
 
-  constructor({ getCtx, settings, cards, records, log, onCardsCreated }: ObserverOptions) {
+  constructor({
+    getCtx,
+    settings,
+    cards,
+    records,
+    log,
+    onCardsCreated,
+    seenSince,
+  }: ObserverOptions) {
     this.#getCtx = getCtx
     this.#settings = settings
     this.#cards = cards
     this.#records = records
     this.#log = log || (() => {})
     this.#onCardsCreated = onCardsCreated
+    this.#seenSince = seenSince
   }
 
   /** 排队串行：不并发开一堆观察者会话。 */
@@ -149,20 +162,19 @@ export class Observer {
 
   async #createCards(input: ObserverTurnInput, last: RunOnceResult): Promise<Card[]> {
     const created: Card[] = []
+    // 观察者跑完时用户可能已经回到原会话：那这批卡的内容他看过了，落盘即已读。
+    const seen =
+      typeof input.seenMark === 'number' && this.#seenSince
+        ? this.#seenSince(input.originSessionId, input.seenMark)
+        : false
     for (const draft of last.cards || []) {
-      const card = await this.#cards.create(draft.title, {
-        detail: draft.detail,
-        source: 'agent',
-        kind: draft.kind,
-        severity: draft.severity,
-        action: draft.action,
-        origin: {
-          sessionId: input.originSessionId,
-          turn: input.turn,
-          observerSessionId: last.sessionId,
-          reason: draft.reason,
-        },
-      })
+      const origin = {
+        sessionId: input.originSessionId,
+        turn: input.turn,
+        observerSessionId: last.sessionId,
+        reason: draft.reason,
+      }
+      const card = await this.#cards.create(draft.title, draftCreateOptions(draft, origin, seen))
       created.push(card)
     }
     return created

@@ -146,6 +146,11 @@ export const CardSchema = z.object({
   origin: CardOriginSchema.nullable().default(null),
   /** 决策 agent 出的票拟；没跑过或没结论时为 null。 */
   advice: AdviceSchema.nullable().default(null),
+  /**
+   * 免打扰：建卡时就已经判定「用户在原会话里看过了」，落盘即 acknowledged，不计未读、不亮圆点。
+   * 只对观察者写的 info 卡成立——决策卡永远要人回应。
+   */
+  silent: z.boolean().default(false),
   createdAt: z.number(),
   updatedAt: z.number(),
   executedAt: z.number().optional(),

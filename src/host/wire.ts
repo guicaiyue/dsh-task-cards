@@ -10,6 +10,7 @@ import type { HostRuntime, Log } from './host-api'
 import { asRecord, asString } from './host-api'
 import { Observer } from './observer/observer'
 import { registerObserverPreset } from './observer/preset'
+import { SeenTracker } from './observer/seen'
 import { observeTurns, type PluginRoot } from './observer/trigger'
 import { installQuestionHook } from './question/hook'
 import { captureQuestion, recordChatAnswer, recordQuestionCard } from './question/record'
@@ -132,6 +133,8 @@ export function wireDecision(root: PluginRoot, deps: WireDeps): Decision {
 /** 观察者 + 触发接线；建卡成功后把这一批卡交给决策阶段。 */
 export function wireObserver(root: PluginRoot, deps: WireDeps, decision: Decision): Observer {
   const { cards, settings, records, log, state } = deps
+  // 触发端记「用户最后发言」的游标，观察者建卡时据此判断这批内容他是不是已经看过。
+  const seen = new SeenTracker()
   const observer = new Observer({
     getCtx: () => state.runtime,
     settings,
@@ -142,6 +145,7 @@ export function wireObserver(root: PluginRoot, deps: WireDeps, decision: Decisio
       if (!settings.get().decisionEnabled) return
       decision.enqueueCards(created)
     },
+    seenSince: (sessionId, mark) => seen.seenSince(sessionId, mark),
   })
   observeTurns(root, {
     observer,
@@ -149,6 +153,7 @@ export function wireObserver(root: PluginRoot, deps: WireDeps, decision: Decisio
     settings: () => settings.get(),
     log,
     captureQuestion: (sessionId, data) => captureQuestion(cards, log, sessionId, data),
+    seen,
   })
   return observer
 }

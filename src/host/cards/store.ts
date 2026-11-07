@@ -39,6 +39,8 @@ export interface CreateCardOptions {
   interaction?: unknown
   question?: unknown
   origin?: unknown
+  /** 用户在原会话里已经看过了：落盘即 acknowledged，并留一条 `via: silent` 事件。 */
+  silent?: unknown
 }
 
 function normalizeKind(value: unknown): CardKind {
@@ -94,6 +96,9 @@ export class Store {
     const now = Date.now()
     const action = normalizeAction(extra.action)
     const dueAt = action ? now + (Number.isFinite(action.delayMs) ? action.delayMs : 600000) : null
+    // 免打扰只对「不需要动作」的卡成立：带 action 的卡还要到点执行，状态得是 scheduled。
+    const silent = !action && extra.silent === true
+    const source = extra.source === 'agent' ? 'agent' : 'human'
     const card: Card = {
       id: nextId('c'),
       title: text,
@@ -101,18 +106,22 @@ export class Store {
       kind: normalizeKind(extra.kind),
       severity: normalizeSeverity(extra.severity),
       // open 未处理 / acknowledged 已读 / scheduled 已排自动动作 / done 已完成 / dismissed 忽略
-      status: action ? 'scheduled' : 'open',
+      status: action ? 'scheduled' : silent ? 'acknowledged' : 'open',
       action,
       dueAt,
-      source: extra.source === 'agent' ? 'agent' : 'human',
+      source,
       // 两种交互：question = 模型提问把对话卡住了；reply = 一轮回复结束后的记录。
       interaction: extra.interaction === 'question' ? 'question' : 'reply',
       question: (extra.question as Card['question']) ?? null,
       origin: (extra.origin as Card['origin']) ?? null,
       advice: null,
+      silent,
       createdAt: now,
       updatedAt: now,
-      events: [{ at: now, type: 'created', via: extra.source === 'agent' ? 'agent' : 'human' }],
+      events: [
+        { at: now, type: 'created', via: source },
+        ...(silent ? [{ at: now, type: 'acknowledged', via: 'silent' }] : []),
+      ],
     }
     this.#cards().unshift(card)
     await this.#doc.write(this.#cards())

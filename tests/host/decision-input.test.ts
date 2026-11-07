@@ -17,6 +17,7 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     question: null,
     origin: null,
     advice: null,
+    silent: false,
     createdAt: 1,
     updatedAt: 1,
     events: [],

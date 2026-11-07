@@ -16,6 +16,8 @@ export interface ObserverTurnInput {
   replyText: string
   turns?: Array<{ user?: string; assistant?: string }>
   cwd?: string
+  /** 回合结束时的「用户最后发言」游标；建卡时用它判断用户是不是已经回来了。 */
+  seenMark?: number
 }
 
 export interface RunOnceResult {

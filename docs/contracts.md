@@ -32,6 +32,7 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | `question` | `{sessionId?, callId?, items[]}` 或 `null` | 问题卡的选项，面板据此作答 |
 | `origin` | `{sessionId?, turn?, observerSessionId?, reason}` | 追溯：哪次会话、第几轮、哪个观察者会话；`reason` 是观察者的分类凭据（一句话） |
 | `advice` | `{verdict, summary, options[], chosen, autoApply, basis, precedentIds[], confidence, question, lane, applied, at}` 或 `null` | 决策代理人的票拟；`chosen` 是推荐方案序号，`autoApply` 表示该推荐可逆且便宜、允许系统直接执行；见 [决策代理人](decision-agent.md) |
+| `silent` | `true` / `false` | 免打扰：建卡时就判定「用户在原会话里已看过」，落盘即 `acknowledged`，不计未读、不亮圆点；只对 `info` 卡成立 |
 | `events` | `[{at, type, via?}]` | 追加式审计：created / completed / answered / auto-executed … |
 
 **状态机**（`src/shared/state.ts`）
@@ -52,7 +53,9 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 
 `done` / `dismissed` / `acknowledged` 是「已结束」（`CLOSED_STATUSES`），面板的 KPI 与分组据此计算。「要我知晓」这一格例外：它数最近 24 小时的知晓卡，读掉不会清零，超过 24 小时才掉出去。
 
-**通知卡不走「处理」**：观察者写的 `info` 卡（`source=agent`）是通知，行上没有「知道了 / 忽略」两个按钮——两个动作在状态上完全等价，差别只是 `dismiss` 会写一条判例（已限制为只对决策卡生效）。面板渲染到它时自动发 `acknowledge`：看到即已读。人手写的 `info` 卡是备忘，保留「知道了」由人自己勾掉。
+**通知卡不走「处理」**：观察者写的 `info` 卡（`source=agent`）是通知，行上没有「知道了 / 忽略」两个按钮——两个动作在状态上完全等价，差别只是 `dismiss` 会写一条判例（已限制为只对决策卡生效）。「看到即已读」的判定收在 `client/hooks/useReadOnScreen.ts`：页签在卡片页、文档可见、**卡在视口里连续停留 2 秒**三条同时成立才发 `acknowledge`——渲染出来不算，列表一屏之外不算，扫一眼划走也不算。人手写的 `info` 卡是备忘，保留「知道了」由人自己勾掉。
+
+**免打扰（`silent`）在宿主侧判定**：观察者是异步跑的（另起一个模型会话，几秒到几十秒）。回合结束时 `SeenTracker` 记下该会话「用户最后发言」的游标；建卡时如果用户已经在原会话里说了下一句，这一轮的回复他必然看过，`info` 卡直接以 `acknowledged` 落盘并标 `silent`（事件 `acknowledged/via=silent`），不进未读、不亮圆点。决策卡不免打扰——永远要人回应；带 `action` 的自动卡也不会被改成已读，它到点还要执行。
 
 **两个数字**：KPI「要我知晓」数**最近 24 小时创建的知晓卡**（`recentInfoCount`，读没读都算）——若按未读数算，面板一打开自动已读就清零、永远是 0。未读数（`unreadInfoCount`）只用在侧栏「任务卡」图标的圆点上，面板没打开时负责发现新通知。
 

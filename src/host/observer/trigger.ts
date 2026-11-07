@@ -13,6 +13,7 @@ import { textOf } from '../question/record'
 import { isObserverSession } from './constants'
 import type { Observer } from './observer'
 import { messageText } from './payload'
+import type { SeenTracker } from './seen'
 import { observerWorkspace } from './workspace'
 
 export interface RootLike {
@@ -31,6 +32,8 @@ export interface TriggerDeps {
   settings: () => Settings
   log: Log
   captureQuestion: (sessionId: string, data: Record<string, unknown>) => Promise<void>
+  /** 每个会话「用户最后发言」的游标：观察者据此判断用户是不是已经回到原会话。 */
+  seen: SeenTracker
 }
 
 interface SessionLike {
@@ -58,6 +61,7 @@ export function observeTurns(root: RootLike, deps: TriggerDeps): void {
     log,
     captureQuestion: deps.captureQuestion,
     tracker,
+    seen: deps.seen,
   })
   root.on('session/event', handlers.onSessionEvent)
   root.on('agent/error', handlers.onAgentError)
@@ -70,6 +74,7 @@ export interface HandlerContext {
   log: Log
   captureQuestion: (sessionId: string, data: Record<string, unknown>) => Promise<void>
   tracker: Map<string, TurnState>
+  seen: SeenTracker
 }
 
 export interface Handlers {
@@ -93,6 +98,7 @@ function createSessionEventHandler({
   log,
   captureQuestion,
   tracker,
+  seen,
 }: HandlerContext) {
   return (...args: unknown[]) => {
     try {
@@ -119,6 +125,8 @@ function createSessionEventHandler({
 
       const state = stateOfTracker(tracker, sessionId)
       const data = asRecord(event.data)
+      // 用户回到原会话：记游标，观察者跑完时据此判断「这一轮他看过了」。
+      if (event.type === 'user/message') seen.markUser(sessionId)
       if (event.type === 'user/message') rememberUserTurn(state, data, cwd)
       else if (event.type === 'assistant/message') rememberAssistantTurn(state, data)
       else if (event.type === 'tool/call') {
@@ -150,7 +158,7 @@ function createAgentErrorHandler({ observer }: HandlerContext) {
   }
 }
 
-function createAgentStatusHandler({ observer, log, tracker }: HandlerContext) {
+function createAgentStatusHandler({ observer, log, tracker, seen }: HandlerContext) {
   return (...args: unknown[]) => {
     try {
       const payload = asRecord(args[0])
@@ -173,6 +181,8 @@ function createAgentStatusHandler({ observer, log, tracker }: HandlerContext) {
         replyText: state.lastReply,
         turns: state.turns.slice(),
         cwd: state.cwd,
+        // 回合落幕时的游标：之后用户再说的话，说明他回来了、也看过了。
+        seenMark: seen.mark(sessionId),
       }
       // 本轮已消费：清掉，避免重复触发
       tracker.delete(sessionId)

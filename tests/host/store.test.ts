@@ -26,6 +26,30 @@ describe('卡片存储', () => {
     expect(reopened.list()[0]?.id).toBe(card.id)
   })
 
+  it('免打扰卡落盘即已读，并留一条 silent 事件', async () => {
+    const store = new Store(tempFile())
+    const card = await store.create('已经看过的结果', { kind: 'info', silent: true })
+
+    expect(card.status).toBe('acknowledged')
+    expect(card.silent).toBe(true)
+    expect(card.events.map((e) => `${e.type}/${e.via ?? ''}`)).toEqual([
+      'created/human',
+      'acknowledged/silent',
+    ])
+  })
+
+  it('带 action 的卡不会被 silent 改成已读：它到点还要执行', async () => {
+    const store = new Store(tempFile())
+    const card = await store.create('限流重试', {
+      kind: 'auto',
+      silent: true,
+      action: { type: 'retry', delayMs: 1000, input: '继续' },
+    })
+
+    expect(card.status).toBe('scheduled')
+    expect(card.silent).toBe(false)
+  })
+
   it('完成与恢复都会追加事件', async () => {
     const store = new Store(tempFile())
     const card = await store.create('跑一次测试')
