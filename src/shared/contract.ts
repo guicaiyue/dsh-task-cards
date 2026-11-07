@@ -69,6 +69,8 @@ export const CardOriginSchema = z.object({
   reason: z.string().default(''),
   /** 触发这张卡的最近一条真人原话（脱敏、截断）。 */
   userQuote: z.string().optional(),
+  /** 真正触发这张卡的输入：可能是真人，也可能是系统代发的卡片答复。 */
+  triggerText: z.string().optional(),
   userQuoteAt: z.number().optional(),
   /** 触发来源：真人 / 任务卡系统代发 / 其它系统注入。 */
   sourceKind: z.enum(ORDER_SOURCES).optional(),

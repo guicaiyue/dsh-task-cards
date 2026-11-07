@@ -85,8 +85,11 @@ export class Observer {
 
     const startedAt = Date.now()
     const payload = buildPayload(input.turns, reply, config.maxInputBytes, {
+      triggerMessage: input.triggerMessage,
       triggerUserMessage: input.triggerUserMessage,
       triggerUserAt: input.triggerUserAt,
+      triggerSourceKind: input.triggerSourceKind,
+      triggerCardId: input.triggerCardId,
       ui: input.ui,
       recentCards: input.recentCards,
     })
@@ -179,6 +182,7 @@ export class Observer {
         observerSessionId: last.sessionId,
         reason: draft.reason,
         userQuote: input.triggerUserMessage || '',
+        triggerText: input.triggerMessage || '',
         userQuoteAt: input.triggerUserAt,
         sourceKind: input.triggerSourceKind || 'human',
         sourceCardId: input.triggerCardId || '',

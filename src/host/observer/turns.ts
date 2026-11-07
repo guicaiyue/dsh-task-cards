@@ -20,6 +20,7 @@ export interface TurnState {
   lastHumanAt?: number
   lastIncomingKind: OrderSource
   lastIncomingCardId: string
+  lastIncomingText: string
 }
 
 export function stateOfTracker(tracker: Map<string, TurnState>, sessionId: string): TurnState {
@@ -36,6 +37,7 @@ export function stateOfTracker(tracker: Map<string, TurnState>, sessionId: strin
       lastHumanQuote: '',
       lastIncomingKind: 'human',
       lastIncomingCardId: '',
+      lastIncomingText: '',
     }
     tracker.set(sessionId, state)
     if (tracker.size > 500) {
@@ -75,6 +77,7 @@ export function rememberIncoming(
   state.turns = [...humans, ...answers].sort((left, right) => (left.at ?? 0) - (right.at ?? 0))
   state.lastIncomingKind = source.kind
   state.lastIncomingCardId = source.cardId
+  state.lastIncomingText = text
   if (source.kind === 'human') {
     state.lastHumanQuote = text
     state.lastHumanAt = at

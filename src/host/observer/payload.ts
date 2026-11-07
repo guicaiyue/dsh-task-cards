@@ -49,8 +49,13 @@ export interface RecentCard {
 }
 
 export interface PayloadContext {
-  /** 触发本轮观察的最近一条真人原话。 */
+  /** 真正触发本轮的消息（真人原话或系统代发的卡片答复）。 */
+  triggerMessage?: string
+  /** 触发本轮的最近一条真人原话。 */
   triggerUserMessage?: string
+  /** 触发来源；card-answer 时 triggerMessage 是系统代发。 */
+  triggerSourceKind?: OrderSource
+  triggerCardId?: string
   triggerUserAt?: number
   /** 面板当前打开的卡 / 页签。 */
   ui?: { tab?: string; openCardId?: string }
@@ -89,13 +94,30 @@ export function buildPayload(
     ? turns.filter((turn) => turn && (turn.user || turn.assistant))
     : []
   const parts: string[] = []
-  if (context.triggerUserMessage) {
+  const triggerText = context.triggerMessage || context.triggerUserMessage
+  if (triggerText) {
     const at = timeText(context.triggerUserAt)
-    parts.push('<trigger>')
-    parts.push(`用户在${at ? ` ${at}` : ''} 说过：`)
-    parts.push(truncateBytes(context.triggerUserMessage, 4000))
-    parts.push('</trigger>')
-    parts.push('')
+    if (context.triggerSourceKind === 'card-answer') {
+      const from = context.triggerCardId ? `（来源：任务卡 ${context.triggerCardId}）` : ''
+      parts.push('<trigger>')
+      parts.push(`本轮由系统代发${from}触发：`)
+      parts.push(truncateBytes(triggerText, 4000))
+      parts.push('</trigger>')
+      parts.push('')
+      if (context.triggerUserMessage) {
+        parts.push('<last_user_quote>')
+        parts.push(`用户最近一次原话${at ? `（${at}）` : ''}：`)
+        parts.push(truncateBytes(context.triggerUserMessage, 4000))
+        parts.push('</last_user_quote>')
+        parts.push('')
+      }
+    } else {
+      parts.push('<trigger>')
+      parts.push(`用户在${at ? ` ${at}` : ''} 说过：`)
+      parts.push(truncateBytes(triggerText, 4000))
+      parts.push('</trigger>')
+      parts.push('')
+    }
   }
   parts.push('<conversation>')
   list.forEach((turn, index) => {

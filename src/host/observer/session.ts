@@ -24,6 +24,8 @@ export interface ObserverTurnInput {
   cwd?: string
   /** 回合结束时的「用户最后发言」游标；建卡时用它判断用户是不是已经回来了。 */
   seenMark?: number
+  /** 真正触发本轮的消息：真人原话或系统代发的卡片答复。 */
+  triggerMessage?: string
   /** 触发本轮的最近一条真人原话：即使窗口被心跳占满也要带上。 */
   triggerUserMessage?: string
   triggerUserAt?: number

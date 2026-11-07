@@ -31,7 +31,7 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | `action` | `{type, delayMs, input, sessionId?}` 或 `null` | 到点要补的那句话；有 action 才可能 `scheduled` |
 | `interaction` | `reply` / `question` | 普通回合记录 / 模型提问把对话卡住了 |
 | `question` | `{sessionId?, callId?, items[]}` 或 `null` | 问题卡的选项，面板据此作答 |
-| `origin` | `{sessionId?, turn?, observerSessionId?, reason, userQuote?, userQuoteAt?, sourceKind?, sourceCardId?, uiCardId?, relatedCardIds?}` | 追溯：哪次会话、第几轮、哪个观察者会话；`reason` 是分类凭据，`userQuote` 是触发这张卡的真人原话，`sourceKind` 区分真人 / 任务卡系统代发 / 其它系统注入，`uiCardId` 是触发时面板打开的卡，`relatedCardIds` 是同会话最近几张卡 |
+| `origin` | `{sessionId?, turn?, observerSessionId?, reason, userQuote?, userQuoteAt?, sourceKind?, sourceCardId?, uiCardId?, relatedCardIds?}` | 追溯：哪次会话、第几轮、哪个观察者会话；`reason` 是分类凭据，`triggerText` 是真正触发这张卡的输入（真人或系统代发），`userQuote` 是触发前最近一条真人原话，`sourceKind` 区分真人 / 任务卡系统代发 / 其它系统注入，`uiCardId` 是触发时面板打开的卡，`relatedCardIds` 是同会话最近几张卡 |
 | `advice` | `{verdict, summary, options[], chosen, autoApply, basis, precedentIds[], confidence, question, lane, ask, effect, requires[], action, scope, reversible, candidates[], blockedReasons[], applied, at}` 或 `null` | 决策代理人的票拟；`chosen` 是推荐方案序号，`autoApply` 表示该推荐可逆且便宜、允许系统直接执行；见 [决策代理人](decision-agent.md) |
 | `silent` | `true` / `false` | 免打扰：建卡时就判定「用户在原会话里已看过」，落盘即 `acknowledged`，不计未读、不亮圆点；只对 `info` 卡成立 |
 | `events` | `[{at, type, via?}]` | 追加式审计：created / completed / answered / auto-executed … |

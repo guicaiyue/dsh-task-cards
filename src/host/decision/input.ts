@@ -39,7 +39,9 @@ interface DecisionCardRow {
   /** 观察者为什么判成这个 kind：代理人判断时可用的分类凭据。 */
   reason: string
   ask: string
-  /** 触发这张卡的真人原话，决策者判断用户意图的唯一来源。 */
+  /** 真正触发这张卡的输入（真人原话或系统代发的卡片答复）。 */
+  triggerText: string
+  /** 触发前最近一条真人原话。 */
   userQuote: string
   sourceKind: string
   sourceCardId: string
@@ -74,6 +76,7 @@ function cardRow(card: Card): DecisionCardRow {
     action: card.action ? clip(card.action.input, CARD_ACTION_MAX) : '',
     reason: clip(card.origin?.reason, CARD_ACTION_MAX),
     ask: card.ask,
+    triggerText: clip(card.origin?.triggerText, 1200),
     userQuote: clip(card.origin?.userQuote, 1200),
     sourceKind: card.origin?.sourceKind || 'human',
     sourceCardId: card.origin?.sourceCardId || '',

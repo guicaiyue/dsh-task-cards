@@ -83,6 +83,32 @@ describe('决策输入构造', () => {
     expect(precedents[0]?.keywords).toEqual(['登录'])
   })
 
+  it('卡片块带 triggerText：系统代发的真正触发输入，与 userQuote 分开', () => {
+    const input = buildDecisionInput(
+      [
+        makeCard({
+          id: 'c-3',
+          origin: {
+            reason: '系统代发触发，模型只报告结果',
+            triggerText: '跑一次复现脚本，只记录真机结果，不要改代码',
+            sourceKind: 'card-answer',
+            sourceCardId: 'c-prev',
+            userQuote: '先只做 P0-2',
+          },
+        }),
+      ],
+      [],
+      30,
+    )
+    const cards = JSON.parse(blockOf(input, 'cards')) as Array<Record<string, unknown>>
+    expect(cards[0]).toMatchObject({
+      triggerText: '跑一次复现脚本，只记录真机结果，不要改代码',
+      userQuote: '先只做 P0-2',
+      sourceKind: 'card-answer',
+      sourceCardId: 'c-prev',
+    })
+  })
+
   it('卡片块带上观察者给的 reason（分类凭据），空则是空串', () => {
     const input = buildDecisionInput(
       [

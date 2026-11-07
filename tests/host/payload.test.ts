@@ -51,6 +51,27 @@ describe('观察者输入', () => {
     expect(payload).not.toContain('用户：跑一次复现')
   })
 
+  it('卡片答复触发时，trigger 标成系统代发，最后真人原话单独放', () => {
+    const payload = buildPayload(
+      [{ provenance: 'card-answer', user: '跑一次复现', cardId: 'c-1' }],
+      '结果如下',
+      100000,
+      {
+        triggerMessage: '跑一次复现',
+        triggerUserMessage: '先只做 P0-2',
+        triggerSourceKind: 'card-answer',
+        triggerCardId: 'c-1',
+      },
+    )
+    expect(payload).toContain('<trigger>')
+    expect(payload).toContain('本轮由系统代发（来源：任务卡 c-1）触发：')
+    expect(payload).toContain('跑一次复现')
+    expect(payload).toContain('<last_user_quote>')
+    expect(payload).toContain('用户最近一次原话')
+    expect(payload).toContain('先只做 P0-2')
+    expect(payload).not.toContain('用户在使用：')
+  })
+
   it('没有轮次时退回「本轮模型最终输出」', () => {
     const payload = buildPayload([], '只有这一句', 100000)
     expect(payload).toContain('【本轮 · 模型最终输出】')

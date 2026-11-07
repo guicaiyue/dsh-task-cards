@@ -201,6 +201,7 @@ function createAgentStatusHandler({
             cwd: snapshot.cwd,
             // 回合落幕时的游标：之后用户再说的话，说明他回来了、也看过了。
             seenMark: seen.mark(sessionId),
+            triggerMessage: snapshot.lastIncomingText || snapshot.lastHumanQuote || durable.text,
             triggerUserMessage: snapshot.lastHumanQuote || durable.text,
             triggerUserAt: snapshot.lastHumanAt ?? durable.at,
             triggerSourceKind: snapshot.lastIncomingKind,

@@ -72,6 +72,8 @@ function ensureFields(prompt: string, mode: PromptMode): string {
 - 每张卡必须输出 reason（一句话分类凭据）。
 - decision 卡必须输出 ask：judgment / permission / clarification。
 - 输入里的「系统代发」不是用户原话，不要把它当用户意图。
+- <trigger> 是真正触发本轮的消息；card-answer 时它由系统代发，<last_user_quote> 才是之前最近的真人原话，不要把两者混成一条。
+- 如果模型只是说「执行不了 / 不知道是哪张卡」，先解析系统代发里的「这张卡」；能解析就解析，不要直接建 judgment。
 - 输出 JSON 顶层是 {"cards":[...]}。`
 }
 
