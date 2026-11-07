@@ -38,3 +38,13 @@ describe('消息来源判定', () => {
     expect(provenanceOf({ source: { kind: 'subagent' } }).kind).toBe('system')
   })
 })
+
+describe('任务卡插件自己的 source kind', () => {
+  it('dsh-task-cards 归为 card-answer，并从 source.cardId 取卡号', () => {
+    const result = provenanceOf({
+      source: { kind: 'dsh-task-cards', form: 'notice', cardId: 'c-9' },
+      content: [{ type: 'text', text: '〔任务卡答复 c-9「标题」〕\n允许' }],
+    })
+    expect(result).toEqual({ kind: 'card-answer', cardId: 'c-9' })
+  })
+})

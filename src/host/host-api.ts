@@ -50,8 +50,22 @@ export interface PromptRequest {
   }
 }
 
+export interface AgentMessageLike {
+  id: string
+  role: 'user'
+  content: Array<{ type: 'text'; text: string }>
+  source: Record<string, unknown>
+}
+
+export interface AgentLike {
+  /** 向实时 agent 的收件箱追加一条 user-role 消息；source 决定聊天里怎么显示。 */
+  followup?(message: AgentMessageLike): void
+}
+
 export interface AgentsLike {
   create(options: Record<string, unknown>): Promise<AgentHandleLike>
+  /** 实时 agent；冷会话返回 undefined。 */
+  get?(sessionId: string): AgentLike | undefined
   list?(): Array<{ sessionId?: string } | undefined>
 }
 

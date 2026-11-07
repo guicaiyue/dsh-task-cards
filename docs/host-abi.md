@@ -12,7 +12,8 @@
 | `agents.create({sessionId, meta:{cwd, agentPreset}, setup, agentOptions})` | → `{agent:{ctx}, dispose()}` | 建观察者会话 | 记录一条异常，跳过 |
 | `agentPresets.register(def)` | → `dispose()` | 注册只有提示词的空 preset | 观察者退回默认 preset（带工具） |
 | `agentPresets.select(agent, presetId)` / `composedPreset(ctx)` | 建会话后补选 preset | 兜底：factory 没认 `meta.agentPreset` | — |
-| `sessionController.prompt(request, signal)` | `{requestId, sessionId, mode:'queue', content:[{type:'text',text}]}` | 投递观察素材 / 卡片作答 | 记异常 |
+| `agents.get(sessionId).followup(message)` | `{id, role:'user', content:[{type:'text',text}], source:{kind:'dsh-task-cards', form:'notice', summary, cardId}}` | 实时会话的卡片作答：聊天显示成「非人类触发」通知，不是用户气泡 | 退回 `sessionController.prompt` |
+| `sessionController.prompt(request, signal)` | `{requestId, sessionId, mode:'queue', content:[{type:'text',text}]}` | 冷会话的卡片作答 / 观察素材；source 被宿主重写成 `user`，只靠文本标记识别 | 记异常 |
 | `sessionController.modelCatalog()` | → `{groups:[{id, models:[{id,name}]}], default}` | `/models` 让用户选模型 | 只能跟随默认模型 |
 | `agentDefaultModel.currentSelection()` | → `{provider, model, reasoningEffort?}` | 观察者默认模型 | 记录「没有可用模型」 |
 | `workspaceRegistry.create(path, title)` | → `{id,title,path,sessionIds,attachSession}` | 观察者会话挂到自己的 workspace | 侧栏看不到，观察照常 |
@@ -35,13 +36,14 @@
 
 ## 踩过的坑（升级时优先复现这几条）
 
-1. **`sessionController.prompt` 的第二个参数是必需的 `AbortSignal`**，不传宿主内部直接抛。
-2. **给会话设了 `parentSession` 之后不能再直接投递 prompt**（会被判为 subagent routing）。观察者身份只靠 `subagent/descriptor` 事件表达。
-3. **`systemPrompt.section({complete:true})` 会独占整段系统提示词**；观察者 preset 里只挂这一个提示词插件，才不会混进默认 persona / skill。
-4. **preset 声明的 plugins 按声明方 baseUrl 解析**，所以写绝对 `file://` URL；loader 会缓存模块，所以 URL 带 `?v=<ts>` 让改动的提示词立刻生效。
-5. **热重载会在同一进程再跑一次 `apply`**，preset 注册会撞 `Duplicate agent preset`。`preset.ts` 里先撤上一轮（disposer 存在 `globalThis` 的 Symbol 槽），再兜底清 `definitions`。
-6. **客户端 bundle 必须带 `sourceMappingURL`**，否则面板报错时只能看到一行压缩代码。
-7. **宿主代码是热重载的，别急着说「要重启」**：`dsh-hmr` 监听 profile `cordis.patch.yml` 里的 `root`
+1. **`sessionController.prompt` 的第二个参数是必需的 `AbortSignal`**，不传宿主内部直接抛。它会把 source 固定成 `{kind:'user', rpcId}`，所以没有 `followup` 时只能靠文本标记区分系统代发。
+2. **`agents.get(id)` 只返回实时 agent**：冷会话返回 `undefined`。`followup(message)` 必须给完整 `{id, role:'user', content, source}`；`source.kind !== 'user'` 时 UI 才渲染成 `turn-trigger` 通知，`inject`/`steer` 的落点分别是 next-step/唤醒，卡片答复要用 `followup`（next-turn）。
+3. **给会话设了 `parentSession` 之后不能再直接投递 prompt**（会被判为 subagent routing）。观察者身份只靠 `subagent/descriptor` 事件表达。
+4. **`systemPrompt.section({complete:true})` 会独占整段系统提示词**；观察者 preset 里只挂这一个提示词插件，才不会混进默认 persona / skill。
+5. **preset 声明的 plugins 按声明方 baseUrl 解析**，所以写绝对 `file://` URL；loader 会缓存模块，所以 URL 带 `?v=<ts>` 让改动的提示词立刻生效。
+6. **热重载会在同一进程再跑一次 `apply`**，preset 注册会撞 `Duplicate agent preset`。`preset.ts` 里先撤上一轮（disposer 存在 `globalThis` 的 Symbol 槽），再兜底清 `definitions`。
+7. **客户端 bundle 必须带 `sourceMappingURL`**，否则面板报错时只能看到一行压缩代码。
+8. **宿主代码是热重载的，别急着说「要重启」**：`dsh-hmr` 监听 profile `cordis.patch.yml` 里的 `root`
    （本机 = `/vol1/1000/开发/NAS/dsh-plugins`），产物落盘 1–2 s 后插件被替换、`apply` 重跑。
    只有装/升级依赖、改环境变量这类不在 HMR 队列里的变更才需要重启。验证方法见 `docs/commands.md#热重载`。
 

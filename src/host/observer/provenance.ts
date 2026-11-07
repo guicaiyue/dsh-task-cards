@@ -24,6 +24,10 @@ export function provenanceOf(data: Record<string, unknown> | undefined): Provena
   const kind = asString(source.kind)
   const rpcId = asString(source.rpcId)
   const text = asString(value.text) || messageTextOf(value)
+  // 任务卡插件自己注入的 user-role 消息：kind 是我们自己的，卡 id 在 source 上。
+  if (kind === 'dsh-task-cards' || kind === 'card-answer') {
+    return { kind: 'card-answer', cardId: asString(source.cardId) || cardIdFromText(text) }
+  }
   if (kind === 'time-context') return { kind: 'system', cardId: '' }
   if (kind && kind !== 'user') return { kind: 'system', cardId: '' }
   if (rpcId.startsWith('card-answer-')) return { kind: 'card-answer', cardId: cardIdFromText(text) }

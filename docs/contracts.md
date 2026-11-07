@@ -57,7 +57,7 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 
 **通知卡不走「处理」**：观察者写的 `info` 卡（`source=agent`）是通知，行上没有「知道了 / 忽略」两个按钮——两个动作在状态上完全等价，差别只是 `dismiss` 会写一条判例（已限制为只对决策卡生效）。「看到即已读」的判定收在 `client/hooks/useReadOnScreen.ts`：页签在卡片页、文档可见、**卡在视口里连续停留 2 秒**三条同时成立才发 `acknowledge`——渲染出来不算，列表一屏之外不算，扫一眼划走也不算。人手写的 `info` 卡是备忘，保留「知道了」由人自己勾掉。
 
-**来源判定**：`observer/provenance.ts` 把 `user/message` 分成 `human` / `card-answer` / `system`；`card-answer` 优先看 `source.rpcId=card-answer-*`，没有就看文本标记 `〔任务卡答复 <卡 id>「标题」〕`；`time-context` 等系统注入不算用户轮次，也不更新「用户已回来」游标。观察者输入里人类轮次标「用户原话」，系统代发标「系统代发（来源：任务卡 …）」。
+**来源判定**：`observer/provenance.ts` 把 `user/message` 分成 `human` / `card-answer` / `system`；实时会话的卡片答复走 `agents.get(sessionId).followup(message)`，`source.kind='dsh-task-cards'`、`form='notice'`，聊天里显示成非人类触发的通知；冷会话退回 `sessionController.prompt`，宿主会把 source 重写成 `user`，只能靠文本标记；`card-answer` 优先看 `source.rpcId=card-answer-*`，没有就看文本标记 `〔任务卡答复 <卡 id>「标题」〕`；`time-context` 等系统注入不算用户轮次，也不更新「用户已回来」游标。观察者输入里人类轮次标「用户原话」，系统代发标「系统代发（来源：任务卡 …）」。
 
 **免打扰（`silent`）在宿主侧判定**：观察者是异步跑的（另起一个模型会话，几秒到几十秒）。回合结束时 `SeenTracker` 记下该会话「用户最后发言」的游标；建卡时如果用户已经在原会话里说了下一句，这一轮的回复他必然看过，`info` 卡直接以 `acknowledged` 落盘并标 `silent`（事件 `acknowledged/via=silent`），不进未读、不亮圆点。决策卡不免打扰——永远要人回应；带 `action` 的自动卡也不会被改成已读，它到点还要执行。
 
