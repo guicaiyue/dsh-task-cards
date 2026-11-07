@@ -37,7 +37,8 @@ export function draftCreateOptions(
       : draft.detail,
     kind: lane.kind,
     severity: draft.severity,
-    action: draft.action,
+    // 只有自动卡才允许带「到点替用户发一句话」的动作；决策/通知卡带 action 会被扫描器误当成自动执行。
+    action: lane.kind === 'auto' ? draft.action : null,
     source: 'agent',
     ask: draft.ask ?? 'judgment',
     origin,

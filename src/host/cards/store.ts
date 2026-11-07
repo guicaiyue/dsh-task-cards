@@ -142,6 +142,7 @@ export class Store {
   due(now: number = Date.now()): Card[] {
     return this.#cards().filter(
       (card) =>
+        card.kind === 'auto' &&
         card.status === 'scheduled' &&
         card.action &&
         typeof card.dueAt === 'number' &&

@@ -67,6 +67,16 @@ describe('draftCreateOptions', () => {
     expect(String(downgraded.detail)).toContain('已降为通知')
   })
 
+  it('只有自动卡保留 action；决策/通知卡即使草稿带了 action 也丢掉', () => {
+    const withAction = (kind: CardDraft['kind']): CardDraft => ({
+      ...draft(kind),
+      action: { type: 'prompt', delayMs: 0, input: '到点发' },
+    })
+    expect(draftCreateOptions(withAction('auto'), origin, false).action).toBeTruthy()
+    expect(draftCreateOptions(withAction('decision'), origin, false).action).toBeNull()
+    expect(draftCreateOptions(withAction('info'), origin, false).action).toBeNull()
+  })
+
   it('已看过 + info → 免打扰；决策卡即使已看过也不免打扰', () => {
     expect(draftCreateOptions(draft('info'), origin, true).silent).toBe(true)
     expect(draftCreateOptions(draft('decision'), origin, true).silent).toBe(false)
