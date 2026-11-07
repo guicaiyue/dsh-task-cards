@@ -273,10 +273,10 @@ function skip(reason: string): DecisionRunResult {
 /** 面板当时开着的卡必须能对上，才允许拿它替用户回答「是哪张卡」。 */
 const DEICTIC_CARD = /(这张卡|那张卡|哪张卡|哪个卡|指哪张|贴回)/
 
-function autoClarificationTarget(card: Card): string | null {
+function autoClarificationTarget(card: Card, question = ''): string | null {
   const ui = card.origin?.uiCardId
   if (!ui) return null
-  const text = `${card.title}\n${card.detail}\n${card.advice?.question ?? ''}`
+  const text = `${card.title}\n${card.detail}\n${question}\n${card.advice?.question ?? ''}`
   if (!DEICTIC_CARD.test(text)) return null
   // 强证据：系统代发时就来自这张卡，或最近卡里只有它一张。
   if (card.origin?.sourceCardId && ui === card.origin.sourceCardId) return ui
@@ -287,7 +287,7 @@ function autoClarificationTarget(card: Card): string | null {
 
 function resolveClarification(card: Card, draft: AdviceDraft): AdviceDraft {
   if (draft.ask !== 'clarification' || draft.answer) return draft
-  const target = autoClarificationTarget(card)
+  const target = autoClarificationTarget(card, draft.question)
   if (!target) return draft
   return {
     ...draft,
