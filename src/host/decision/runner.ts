@@ -238,6 +238,7 @@ export class Decision {
       getCtx: this.#getCtx,
       log: (line: string) => this.#log(`自动执行：${line}`),
       allowed,
+      diagnostics: this.#settings.get().autoApproveDiagnostics,
     }
   }
 

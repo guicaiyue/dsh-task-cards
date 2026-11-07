@@ -45,7 +45,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 | 许可卡（`ask=permission`） | 行上有「许可」chip；主按钮「批准并执行」、次按钮「拒绝」；详情显示「将执行 / 范围 / 影响 / 可撤回」；不可逆时行上变成「查看并确认」，详情必须勾选「我已知晓」才能点「批准并执行」 |
 | 澄清卡（`ask=clarification`） | 行上有「澄清」chip；主按钮「补充信息」；详情显示问题、候选按钮、输入框（输入前「提交」禁用） |
 | 来源块 | 详情里能看到「你说过」的真人原话；系统代发时显示「系统代发」和来源卡 id；面板打开着别的卡时显示「面板当时打开」 |
-| 可逆诊断改动 | `write-code + reversible=true + 日志/插桩/复测` 的许可卡自动放行，卡直接 done；含 commit/push/删除的仍停在许可。 |
+| 可逆诊断改动 | `write-code + reversible=true + 日志/插桩/复测` 的许可卡，在 `autoApproveDiagnostics` 或 `decisionAutoApply` 打开时自动放行，卡直接 done；两个开关都关时停在许可；含 commit/push/删除的始终停在许可。 |
 | 对象不明的多卡指代 | 卡里说「三张旧卡」但没有 id 时，决策结果强制变成澄清「你指的是哪几张卡？请给出卡片 id」，不出现批准按钮。 |
 | 自动执行闸门 | `advice.blockedReasons` 非空时，详情显示人话原因（缺能力 / 指代不明 / 影响等级不是只读） |
 | 旧卡兼容 | 没有 `ask` 的历史卡按「判断」显示，不出现 `ask_undefined` |

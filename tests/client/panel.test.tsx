@@ -57,6 +57,7 @@ const SETTINGS: Settings = {
   decisionModel: '',
   decisionPrecedentLimit: 30,
   decisionAutoApply: true,
+  autoApproveDiagnostics: false,
 }
 
 /** 一张完整的票拟：两个方案、一条被引用的判例，推荐第一个且可自动执行。 */

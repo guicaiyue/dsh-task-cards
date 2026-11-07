@@ -68,7 +68,7 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 ## 设置（`SettingsSchema`）
 
 `systemPrompt`、`provider`、`model`、`enabled`、`minReplyChars`、`includeSubagents`、`maxInputBytes`、`timeoutMs`。
-决策阶段另有 `decisionEnabled`、`decisionPrompt`、`decisionProvider`、`decisionModel`、`decisionPrecedentLimit`、`decisionAutoApply`。
+决策阶段另有 `decisionEnabled`、`decisionPrompt`、`decisionProvider`、`decisionModel`、`decisionPrecedentLimit`、`decisionAutoApply`、`autoApproveDiagnostics`（独立开关，只放行可逆诊断性 write-code）。
 默认值在 `src/host/cards/defaults.ts`；`systemPrompt` 的默认文本就是分类契约（kind 的判定标准），改它等于改分类行为；`decisionPrompt` 为空的含义是「用内置的决策画像」（`src/host/decision/defaults.ts`），不是「没有提示词」。
 
 ## 票拟与判例（`AdviceSchema` / `PrecedentSchema`）
@@ -85,7 +85,7 @@ card.advice = { verdict: approve|reject|modify|wait, summary, confidence, questi
 
 **三车道**：`judgment` 给 2–3 个方案；`permission` 只给一个动作 + 范围 + 影响，options 为空；`clarification` 只给 question + candidates，options 为空。许可/澄清的答复由宿主模板生成，不让模型自由写「贴回这张卡」这类指代。
 
-**自动执行闸门**（`decision/answer-guard.ts`）：`autoApply=true` 时必须同时满足 `effect=read`、`requires` 全在当前能力清单（`session.reply` / `cards.complete` / `cards.acknowledge` / `cards.dismiss`）、句子不含未解析的指代、有 origin.sessionId；否则不投递，把原因写进 `advice.blockedReasons` 并在详情里显示。人工批准只拦不存在的能力，不拦指代。
+**自动执行闸门**（`decision/answer-guard.ts`）：`autoApply=true` 时必须同时满足 `effect=read`（或可逆诊断性 `write-code` 且对应开关打开）、`requires` 全在当前能力清单（`session.reply` / `cards.complete` / `cards.acknowledge` / `cards.dismiss`）、句子不含未解析的指代、有 origin.sessionId；否则不投递，把原因写进 `advice.blockedReasons` 并在详情里显示。人工批准只拦不存在的能力，不拦指代。
 
 - `verdict`：`approve` 照办 / `reject` 不该做 / `modify` 改后批 / `wait` 现在别决（配 `question` 追问）。
 - `applied`：车道纠正是否真的落盘。代理人只允许把 `decision` 降成 `info`（可逆、不需要人动手），反向不落盘。

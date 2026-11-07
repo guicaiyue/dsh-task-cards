@@ -60,4 +60,5 @@ export const DEFAULT_SETTINGS: Settings = {
   decisionModel: '',
   decisionPrecedentLimit: 30,
   decisionAutoApply: true,
+  autoApproveDiagnostics: false,
 }

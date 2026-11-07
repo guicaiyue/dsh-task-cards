@@ -14,7 +14,7 @@ import { isClosed } from '../../shared/state'
 import type { Store } from '../cards/store'
 import type { HostRuntime, Log } from '../host-api'
 import { deliverToOrigin } from '../question/deliver'
-import { checkAnswer } from './answer-guard'
+import { checkAnswer, safeDiagnosticWrite } from './answer-guard'
 import { permissionAnswer } from './templates'
 
 /** 卡上记的事件类型：自动执行成功是 advice-applied，失败是 advice-applied:failed。 */
@@ -26,6 +26,18 @@ export interface AutoApplyDeps {
   log: Log
   /** 设置里的 decisionAutoApply：用户关掉后任何票拟都不代跑。 */
   allowed: boolean
+  /** 设置里的 autoApproveDiagnostics：只放行可逆的诊断性 write-code。 */
+  diagnostics: boolean
+}
+
+/** 两个开关是并集：通用开关放行所有 autoApply；独立开关只放行诊断类。 */
+export function autoApplyAllowed(
+  advice: Card['advice'],
+  allowed: boolean,
+  diagnostics: boolean,
+): boolean {
+  if (!advice?.autoApply) return false
+  return allowed || (diagnostics && safeDiagnosticWrite(advice))
 }
 
 /** 推荐方案里那句能独立成立的话；没有（或序号越界）返回空串。 */
@@ -37,7 +49,8 @@ export function chosenAnswerOf(card: Card): string {
 }
 
 export async function autoApplyAdvice(deps: AutoApplyDeps, card: Card): Promise<boolean> {
-  if (!deps.allowed || !card.advice?.autoApply) return false
+  const advice = card.advice
+  if (!advice || !autoApplyAllowed(advice, deps.allowed, deps.diagnostics)) return false
   // 许可卡通常没有 answer；自动放行的诊断性改动用固定许可模板，不交给模型自由发挥。
   const text =
     chosenAnswerOf(card) || (card.advice?.ask === 'permission' ? permissionAnswer(card, true) : '')
@@ -48,7 +61,7 @@ export async function autoApplyAdvice(deps: AutoApplyDeps, card: Card): Promise<
       card.id,
       {
         advice: {
-          ...card.advice,
+          ...advice,
           autoApply: false,
           blockedReasons: check.reasons,
         },

@@ -219,6 +219,8 @@ export class SettingsStore {
     // 自动执行开关：面板关掉以后，任何票拟都不许代跑。
     if (typeof patch.decisionAutoApply === 'boolean')
       next.decisionAutoApply = patch.decisionAutoApply
+    if (typeof patch.autoApproveDiagnostics === 'boolean')
+      next.autoApproveDiagnostics = patch.autoApproveDiagnostics
     await this.#doc.write(next)
     return next
   }

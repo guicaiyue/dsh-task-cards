@@ -241,6 +241,8 @@ export const SettingsSchema = z.object({
   decisionPrecedentLimit: z.number().int().nonnegative().default(30),
   /** 允许系统直接执行 autoApply=true 的票拟（不等人批红）。 */
   decisionAutoApply: z.boolean().default(true),
+  /** 独立开关：只自动放行可逆的诊断性 write-code（日志/插桩/复测），不影响其它票拟。 */
+  autoApproveDiagnostics: z.boolean().default(false),
 })
 export type Settings = z.infer<typeof SettingsSchema>
 

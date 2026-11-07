@@ -152,6 +152,9 @@ export const zh: Record<string, string> = {
   decisionHint:
     '卡建好后另跑一个只出票拟的会话：它只给结论、2–3 个方案和依据，不动手；采纳才回给原会话。',
   decisionEnabled: '启用决策代理人',
+  autoApproveDiagnostics: '只自动放行可逆的诊断性改动',
+  autoApproveDiagnosticsHint:
+    '仅限加临时日志、插桩、复测、只读检查；commit/push/删除/发布/对外仍要你批。不影响其它票拟的自动执行。',
   decisionAutoApply: '票拟可自动执行时，系统直接动手',
   decisionAutoApplyHint: '只有撤回不需要你动手的，才会被标为可自动执行。',
   decisionModel: '决策用的模型',

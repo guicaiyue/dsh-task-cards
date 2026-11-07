@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-
 import {
   checkAnswer,
   manualBlockers,
   safeDiagnosticWrite,
 } from '../../src/host/decision/answer-guard'
+import { autoApplyAllowed } from '../../src/host/decision/autoapply'
 import type { Advice, Card } from '../../src/shared/contract'
 
 function advice(overrides: Partial<Advice> = {}): Advice {
@@ -94,6 +94,26 @@ describe('自动执行闸门', () => {
     })
     expect(safeDiagnosticWrite(commit)).toBe(false)
     expect(checkAnswer(card({ advice: commit }), '已允许：git commit 22 个文件').ok).toBe(false)
+  })
+
+  it('独立诊断开关只放行诊断类，通用开关仍放行全部', () => {
+    const diagnostic = advice({
+      effect: 'write-code',
+      reversible: true,
+      action: '加临时日志后复测',
+      scope: '仅日志',
+    })
+    expect(autoApplyAllowed(diagnostic, false, true)).toBe(true)
+    expect(autoApplyAllowed(diagnostic, false, false)).toBe(false)
+    expect(autoApplyAllowed(diagnostic, true, false)).toBe(true)
+
+    const commit = advice({
+      effect: 'write-code',
+      reversible: true,
+      action: 'git commit 22 个文件',
+      scope: 'workspace',
+    })
+    expect(autoApplyAllowed(commit, false, true)).toBe(false)
   })
 
   it('缺能力 → 拦', () => {

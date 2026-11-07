@@ -153,6 +153,9 @@ export const en: Record<string, string> = {
   decisionHint:
     'After cards are created, a separate session drafts advice only: verdict, 2-3 options and the basis. It never acts; adopting sends the answer back to the chat.',
   decisionEnabled: 'Decision agent enabled',
+  autoApproveDiagnostics: 'Auto-approve reversible diagnostics only',
+  autoApproveDiagnosticsHint:
+    'Only temporary logs, instrumentation, repro runs and read-only checks. Commit/push/delete/publish/external still need your approval; other advice is unaffected.',
   decisionAutoApply: 'Let the system act when advice can be auto-applied',
   decisionAutoApplyHint: 'Only advice whose undo never needs your hands is marked auto-applicable.',
   decisionModel: 'Model for decisions',

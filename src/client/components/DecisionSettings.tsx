@@ -5,6 +5,27 @@ import { ModelPicker } from './ModelPicker'
 import { PrecedentList } from './PrecedentList'
 import { RecordList } from './RecordList'
 
+function ToggleRow({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean
+  label: string
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <label className="dtc-row" style={{ cursor: 'pointer', fontSize: '12px' }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>{label}</span>
+    </label>
+  )
+}
+
 interface Props {
   t: Translate
   value: Settings
@@ -22,23 +43,23 @@ export function DecisionSettings({ t, value, models, precedents, records, onChan
         <span className="dtc-section-count">{t('precedentCount', { n: precedents.length })}</span>
       </div>
       <div className="dtc-hint">{t('decisionHint')}</div>
-      <label className="dtc-row" style={{ cursor: 'pointer', fontSize: '12px' }}>
-        <input
-          type="checkbox"
-          checked={value.decisionEnabled !== false}
-          onChange={(event) => onChange({ decisionEnabled: event.target.checked })}
-        />
-        <span>{t('decisionEnabled')}</span>
-      </label>
-      <label className="dtc-row" style={{ cursor: 'pointer', fontSize: '12px' }}>
-        <input
-          type="checkbox"
-          checked={value.decisionAutoApply !== false}
-          onChange={(event) => onChange({ decisionAutoApply: event.target.checked })}
-        />
-        <span>{t('decisionAutoApply')}</span>
-      </label>
+      <ToggleRow
+        checked={value.decisionEnabled !== false}
+        label={t('decisionEnabled')}
+        onChange={(next) => onChange({ decisionEnabled: next })}
+      />
+      <ToggleRow
+        checked={value.decisionAutoApply !== false}
+        label={t('decisionAutoApply')}
+        onChange={(next) => onChange({ decisionAutoApply: next })}
+      />
       <div className="dtc-hint">{t('decisionAutoApplyHint')}</div>
+      <ToggleRow
+        checked={value.autoApproveDiagnostics === true}
+        label={t('autoApproveDiagnostics')}
+        onChange={(next) => onChange({ autoApproveDiagnostics: next })}
+      />
+      <div className="dtc-hint">{t('autoApproveDiagnosticsHint')}</div>
       <ModelPicker
         t={t}
         label={t('decisionModel')}

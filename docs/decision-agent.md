@@ -45,7 +45,7 @@ parse → 写回 card.advice（事件 advised）
 
 `autoApply=true` 只是候选，真正投递前还要过 `decision/answer-guard.ts`：
 
-1. `effect` 必须是 `read`；例外是可撤销的诊断性 `write-code`（日志/插桩/复测/只读检查，且不含 commit/push/删除/发布），它会自动放行并把卡标完成，不劳用户点头。`destructive` / `external` / `spend` 一律拦。
+1. `effect` 必须是 `read`；例外是可撤销的诊断性 `write-code`（日志/插桩/复测/只读检查，且不含 commit/push/删除/发布）。它只有在 `decisionAutoApply` 或独立开关 `autoApproveDiagnostics` 打开时才自动放行并把卡标完成；两个开关都关就停在许可。`destructive` / `external` / `spend` 一律拦。
 2. `requires` 必须全在当前能力清单里（`session.reply` / `cards.complete` / `cards.acknowledge` / `cards.dismiss`）；插件没有写卡片正文的接口，所以 `cards.append` / `cards.write-body` 会被拦。
 3. `answer` 必须能独立成立：不得出现「这张卡 / 上一张 / 刚才那张」这类没有具体目标的指代；需要指代时写卡片 id 或标题。
 4. 必须有 `origin.sessionId`，否则没有可投递的会话。
@@ -90,6 +90,7 @@ parse → 写回 card.advice（事件 advised）
 | `decisionProvider` / `decisionModel` | 空 | 空 = 与观察者一致的默认模型 |
 | `decisionPrecedentLimit` | `30` | 单次输入带多少条判例 |
 | `decisionAutoApply` | `true` | 允许系统直接执行 `autoApply=true` 的票拟；关掉就退化成「全部等人批红」 |
+| `autoApproveDiagnostics` | `false` | 独立开关：只自动放行可逆的诊断性 `write-code`（日志/插桩/复测/只读检查），不影响其它票拟；与 `decisionAutoApply` 取并集 |
 
 一次决策会话覆盖「本次观察者新建的一批卡」，不是一张卡开一个会话：省 token，也方便它横向比较。
 
