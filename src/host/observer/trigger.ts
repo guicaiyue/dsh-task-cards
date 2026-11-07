@@ -13,7 +13,7 @@ import { isObserverSession } from './constants'
 import { lastHumanMessage, type PresenceLike, recentCardsOf } from './context'
 import type { Observer } from './observer'
 import { provenanceOf } from './provenance'
-import type { SeenTracker } from './seen'
+import { markRecentInfoCardsSeen, type SeenTracker } from './seen'
 import { rememberAssistantTurn, rememberIncoming, stateOfTracker, type TurnState } from './turns'
 import { observerWorkspace } from './workspace'
 
@@ -93,6 +93,22 @@ export function createHandlers(context: HandlerContext): Handlers {
   }
 }
 
+/** 真人回来：记游标，并把可能晚到的消息之前已落盘的通知补成已读。 */
+function markHumanSeen(
+  cards: HandlerContext['cards'],
+  seen: SeenTracker,
+  sessionId: string,
+  data: Record<string, unknown>,
+  log: Log,
+): void {
+  if (provenanceOf(data).kind !== 'human') return
+  seen.markUser(sessionId)
+  if (!cards) return
+  markRecentInfoCardsSeen(cards, sessionId).catch((err: unknown) =>
+    log(`补标已读失败：${(err as Error)?.message || String(err)}`),
+  )
+}
+
 function createSessionEventHandler({
   observer,
   settings,
@@ -100,6 +116,7 @@ function createSessionEventHandler({
   captureQuestion,
   tracker,
   seen,
+  cards,
 }: HandlerContext) {
   return (...args: unknown[]) => {
     try {
@@ -137,10 +154,7 @@ function createSessionEventHandler({
         }
       }
       // 真人回到原会话：只记人类消息。卡片答复是系统替用户发的，不算「他看过」。
-      if (event.type === 'user/message') {
-        const source = provenanceOf(data)
-        if (source.kind === 'human') seen.markUser(sessionId)
-      }
+      if (event.type === 'user/message') markHumanSeen(cards, seen, sessionId, data, log)
     } catch (err) {
       log(`session/event 处理失败：${(err as Error)?.message || String(err)}`)
     }

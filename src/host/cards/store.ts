@@ -150,6 +150,16 @@ export class Store {
     )
   }
 
+  /** 用户后来才回到会话：把已经落盘的近期通知补标成「已看过」，不再亮未读。 */
+  async markSeen(id: string, at: number = Date.now()): Promise<Card> {
+    const card = this.#cards().find((item) => item.id === id)
+    if (!card) throw new StoreError('NOT_FOUND', '这张卡不存在（可能已被删除）')
+    Object.assign(card, { silent: true, status: 'acknowledged', updatedAt: at })
+    card.events.push({ at, type: 'acknowledged', via: 'silent' })
+    await this.#doc.write(this.#cards())
+    return { ...card }
+  }
+
   /** 统一的改状态入口：所有变更都留一条事件。 */
   async patch(id: string, changes: Partial<Card>, event?: string): Promise<Card> {
     const card = this.#cards().find((item) => item.id === id)
