@@ -17,7 +17,7 @@
         │  本次新建的卡
         ▼
 决策会话（无工具 preset，独立 session，只读卡与判例）
-        │  只输出 JSON：{"decisions":[{cardId, lane, verdict, summary, options[], basis, precedentIds, confidence, question}]}
+        │  只输出 JSON：{"decisions":[{cardId, lane, ask, verdict, summary, effect, requires[], action, scope, reversible, candidates[], options[], basis, precedentIds, confidence, question}]}
         ▼
 parse → 写回 card.advice（事件 advised）
         │  车道只是 decision → info 时顺手纠正（事件 lane:info）
@@ -30,6 +30,27 @@ parse → 写回 card.advice（事件 advised）
 ```
 
 失败重试一次，仍失败只记日志与卡事件，不影响卡本身可用。
+
+## 三种请求：判断 / 许可 / 澄清
+
+`kind=decision` 还不够具体；决策代理人再标一层 `ask`：
+
+- `judgment`：有 A/B 两个以上方向要比较。给 2–3 个方案，每个写成本 / 长期收益 / 最坏情况。
+- `permission`：只有一个已定动作，等用户 yes/no（提交、改代码、推送、删除、花钱、对外发消息）。不给替代设计，只给 `action` / `scope` / `effect` / `reversible`；面板显示「允许一次 / 拒绝」，两句话都由宿主模板生成。
+- `clarification`：只缺一条事实/指代（是哪张卡、哪个文件、哪个账号）。不给方案，只给 `question` + `candidates`；面板给候选按钮和输入框，答复会拼成「补充信息：…。这是对「…」的回答，继续。」。
+
+拿不准时：judgment/permission 拿不准选 permission（少让人做设计）；permission/clarification 拿不准选 clarification（只补信息）。
+
+## 自动执行闸门
+
+`autoApply=true` 只是候选，真正投递前还要过 `decision/answer-guard.ts`：
+
+1. `effect` 必须是 `read`；`write-code` / `destructive` / `external` / `spend` 一律拦。
+2. `requires` 必须全在当前能力清单里（`session.reply` / `cards.complete` / `cards.acknowledge` / `cards.dismiss`）；插件没有写卡片正文的接口，所以 `cards.append` / `cards.write-body` 会被拦。
+3. `answer` 必须能独立成立：不得出现「这张卡 / 上一张 / 刚才那张」这类没有具体目标的指代；需要指代时写卡片 id 或标题。
+4. 必须有 `origin.sessionId`，否则没有可投递的会话。
+
+任何一条不满足：不投递，把原因写进 `advice.blockedReasons`，面板详情直接显示；人工批准只拦「不存在的能力」，不拦指代。自动执行成功/失败都不写判例。
 
 ## 提示词就是他的决策画像
 
@@ -77,7 +98,8 @@ parse → 写回 card.advice（事件 advised）
 
 | 票拟 | 谁动手 | 卡的去向 |
 | :-- | :-- | :-- |
-| `autoApply: true` 且 `decisionAutoApply` 开着 | **系统**（把 `answer` 发回原会话） | `done`，事件 `advice-applied` |
+| `autoApply: true` 且 `decisionAutoApply` 开着且过闸门 | **系统**（把 `answer` 发回原会话） | `done`，事件 `advice-applied` |
+| `autoApply: true` 但闸门拦下 | 不投递，等人批 | `open`，`advice.blockedReasons` 写明原因 |
 | 其余票拟 | 你（「批准」或「采纳某个方案」） | `done`，事件 `approved` / `answered` |
 | 自动执行**投递失败** | 你（卡留在待决策，并带上失败原因） | `open` + `lastError`，事件 `advice-applied:failed` |
 | 你标返工 | 你 | 状态不变，判例 `outcome=reworked` |

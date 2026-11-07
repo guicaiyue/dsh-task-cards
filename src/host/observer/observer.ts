@@ -84,7 +84,12 @@ export class Observer {
     }
 
     const startedAt = Date.now()
-    const payload = buildPayload(input.turns, reply, config.maxInputBytes)
+    const payload = buildPayload(input.turns, reply, config.maxInputBytes, {
+      triggerUserMessage: input.triggerUserMessage,
+      triggerUserAt: input.triggerUserAt,
+      ui: input.ui,
+      recentCards: input.recentCards,
+    })
     const userText = `以下是某次会话最近几轮的输入与模型最终输出（越靠后越新）。请判断最后一轮结束后有没有值得留下的事，并只输出 JSON。\n\n<conversation>\n${payload}\n</conversation>`
     let last: RunOnceResult | null = null
 
@@ -173,6 +178,12 @@ export class Observer {
         turn: input.turn,
         observerSessionId: last.sessionId,
         reason: draft.reason,
+        userQuote: input.triggerUserMessage || '',
+        userQuoteAt: input.triggerUserAt,
+        sourceKind: input.triggerSourceKind || 'human',
+        sourceCardId: input.triggerCardId || '',
+        uiCardId: input.ui?.openCardId || '',
+        relatedCardIds: (input.recentCards || []).map((card) => card.id),
       }
       const card = await this.#cards.create(draft.title, draftCreateOptions(draft, origin, seen))
       created.push(card)

@@ -1,6 +1,8 @@
-// 详情弹窗顶部的「这张卡本身」：标题、明细、选项、动作。
+// 详情弹窗顶部的「这张卡本身」：标题、明细、来源、车道专属动作。
 
+import { useState } from 'react'
 import { isClosed } from '../../shared/state'
+import { blockedReasonLabel, effectLabel } from '../advice'
 import type { Card, CardActionName, Translate } from '../types'
 import { QuestionOptions } from './QuestionOptions'
 
@@ -17,9 +19,7 @@ export function ModalCardBlock({ t, card, busy, onAction }: Props) {
     <div className="dtc-card-block">
       <div className="dtc-card-block-title">{card.title}</div>
       {card.detail ? <div className="dtc-card-block-detail">{card.detail}</div> : null}
-      {card.origin?.reason ? (
-        <div className="dtc-origin-reason">{t('originReason', { reason: card.origin.reason })}</div>
-      ) : null}
+      <SourceBlock t={t} card={card} />
       <QuestionOptions
         t={t}
         card={card}
@@ -29,9 +29,129 @@ export function ModalCardBlock({ t, card, busy, onAction }: Props) {
       />
       {closed ? (
         <div className="dtc-hint">{t('alreadyClosed')}</div>
+      ) : card.ask === 'permission' ? (
+        <PermissionBlock t={t} card={card} busy={busy} onAction={onAction} />
+      ) : card.ask === 'clarification' ? (
+        <ClarificationBlock t={t} card={card} busy={busy} onAction={onAction} />
       ) : (
         <CardBlockActions t={t} card={card} busy={busy} onAction={onAction} />
       )}
+    </div>
+  )
+}
+
+function SourceBlock({ t, card }: { t: Translate; card: Card }) {
+  const origin = card.origin
+  if (!origin) return null
+  return (
+    <div className="dtc-source-block">
+      {origin.userQuote ? (
+        <div className="dtc-source-row">
+          <span>{t('sourceUser')}</span>
+          <span>{origin.userQuote}</span>
+        </div>
+      ) : null}
+      {origin.sourceKind === 'card-answer' ? (
+        <div className="dtc-source-row">
+          <span>{t('sourceSystem')}</span>
+          <span>{origin.sourceCardId || t('sourceSystemUnknown')}</span>
+        </div>
+      ) : null}
+      {origin.uiCardId ? (
+        <div className="dtc-source-row">
+          <span>{t('sourceUi')}</span>
+          <span>{origin.uiCardId}</span>
+        </div>
+      ) : null}
+      {origin.reason ? (
+        <div className="dtc-origin-reason">{t('originReason', { reason: origin.reason })}</div>
+      ) : null}
+    </div>
+  )
+}
+
+function PermissionBlock({ t, card, busy, onAction }: Props) {
+  const advice = card.advice
+  return (
+    <div className="dtc-permission">
+      <div className="dtc-permission-title">{t('permissionWillDo')}</div>
+      <div className="dtc-permission-action">{advice?.action || card.detail || card.title}</div>
+      <div className="dtc-permission-meta">
+        <span>{t('permissionScope', { scope: advice?.scope || '—' })}</span>
+        <span>{t('permissionEffect', { effect: effectLabel(t, advice?.effect) })}</span>
+        <span>{t('permissionReversible', { value: advice?.reversible ? t('yes') : t('no') })}</span>
+      </div>
+      {advice?.blockedReasons?.length ? (
+        <div className="dtc-hint">
+          {t('blockedReasons', {
+            reasons: advice.blockedReasons
+              .map((reason) => blockedReasonLabel(t, reason))
+              .join('；'),
+          })}
+        </div>
+      ) : null}
+      <div className="dtc-actions">
+        <button
+          type="button"
+          className="dtc-btn is-primary"
+          disabled={busy}
+          onClick={() => onAction(card, 'approve')}
+        >
+          {t('allowOnce')}
+        </button>
+        <button
+          type="button"
+          className="dtc-btn is-danger"
+          disabled={busy}
+          onClick={() => onAction(card, 'deny')}
+        >
+          {t('deny')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ClarificationBlock({ t, card, busy, onAction }: Props) {
+  const [value, setValue] = useState('')
+  const advice = card.advice
+  const question = advice?.question || card.detail || card.title
+  const candidates = advice?.candidates || []
+  return (
+    <div className="dtc-clarification">
+      <div className="dtc-permission-title">{t('clarifyQuestion')}</div>
+      <div className="dtc-permission-action">{question}</div>
+      {candidates.length ? (
+        <div className="dtc-actions">
+          {candidates.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              className="dtc-btn"
+              disabled={busy}
+              onClick={() => onAction(card, 'answer', candidate)}
+            >
+              {candidate}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="dtc-actions">
+        <input
+          className="dtc-input"
+          value={value}
+          placeholder={t('clarifyPlaceholder')}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        <button
+          type="button"
+          className="dtc-btn is-primary"
+          disabled={busy || !value.trim()}
+          onClick={() => onAction(card, 'answer', value.trim())}
+        >
+          {t('clarifySubmit')}
+        </button>
+      </div>
     </div>
   )
 }
@@ -79,14 +199,6 @@ function CardBlockActions({ t, card, busy, onAction }: Props) {
           {t('dismiss')}
         </button>
       )}
-      <button
-        type="button"
-        className="dtc-btn is-danger"
-        disabled={busy}
-        onClick={() => onAction(card, 'delete')}
-      >
-        {t('remove')}
-      </button>
     </div>
   )
 }

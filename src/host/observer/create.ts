@@ -17,6 +17,7 @@ export function draftCreateOptions(
     severity: draft.severity,
     action: draft.action,
     source: 'agent',
+    ask: draft.ask ?? 'judgment',
     origin,
     silent: seen && draft.kind === 'info',
   }

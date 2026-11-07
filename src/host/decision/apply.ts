@@ -33,6 +33,14 @@ function toAdvice(draft: AdviceDraft, applied: boolean): Advice {
     confidence: draft.confidence,
     question: draft.question,
     lane: draft.lane,
+    ask: draft.ask ?? 'judgment',
+    effect: draft.effect ?? 'write-code',
+    requires: draft.requires ?? [],
+    action: draft.action, // optional
+    scope: draft.scope,
+    reversible: draft.reversible ?? false,
+    candidates: draft.candidates ?? [],
+    blockedReasons: draft.blockedReasons ?? [],
     applied,
     at: Date.now(),
   }

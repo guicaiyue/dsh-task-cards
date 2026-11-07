@@ -17,8 +17,17 @@ const HEADER = [
 const PRECEDENT_FIELD_MAX = 600
 const CARD_DETAIL_MAX = 1000
 const CARD_ACTION_MAX = 400
-/** 模板与两个标签本身的字节，留给它们再给卡/判例分配预算。 */
-const WRAPPER_BYTES = 800
+/** 模板与标签本身的字节，留给它们再给卡/判例分配预算。 */
+const WRAPPER_BYTES = 1400
+
+/** 能力清单：决策代理人只能要求这些；写卡片正文明确不支持。 */
+const CAPABILITIES = [
+  '<capabilities>',
+  'session.reply: 支持（往原会话发一句话）',
+  'cards.complete / cards.acknowledge / cards.dismiss: 支持（结束/已读/忽略卡片）',
+  'cards.append / cards.write-body: 不支持（没有写卡片正文的接口）',
+  '</capabilities>',
+].join('\n')
 
 interface DecisionCardRow {
   id: string
@@ -29,6 +38,13 @@ interface DecisionCardRow {
   action: string
   /** 观察者为什么判成这个 kind：代理人判断时可用的分类凭据。 */
   reason: string
+  ask: string
+  /** 触发这张卡的真人原话，决策者判断用户意图的唯一来源。 */
+  userQuote: string
+  sourceKind: string
+  sourceCardId: string
+  uiCardId: string
+  relatedCardIds: string[]
 }
 
 interface DecisionPrecedentRow {
@@ -57,6 +73,12 @@ function cardRow(card: Card): DecisionCardRow {
     // 非空说明这张卡已经被安排过到点动作，决策时不该再重复安排。
     action: card.action ? clip(card.action.input, CARD_ACTION_MAX) : '',
     reason: clip(card.origin?.reason, CARD_ACTION_MAX),
+    ask: card.ask,
+    userQuote: clip(card.origin?.userQuote, 1200),
+    sourceKind: card.origin?.sourceKind || 'human',
+    sourceCardId: card.origin?.sourceCardId || '',
+    uiCardId: card.origin?.uiCardId || '',
+    relatedCardIds: (card.origin?.relatedCardIds || []).slice(0, 8),
   }
 }
 
@@ -111,6 +133,8 @@ export function buildDecisionInput(
     '<cards>',
     cardsText,
     '</cards>',
+    '',
+    CAPABILITIES,
     '',
     '<precedents>',
     precedentsText,

@@ -3,7 +3,14 @@
 // 模型最常见的两种跑偏：包一层 markdown 代码块、前后加一句解释。
 // 两种都得能救，救不回来才交给上层重试。
 
-import type { CardAction, CardDraft, CardKind, CardSeverity } from '../../shared/contract'
+import type {
+  AskKind,
+  CardAction,
+  CardDraft,
+  CardKind,
+  CardSeverity,
+  Effect,
+} from '../../shared/contract'
 
 type ParseResult = { ok: true; value: unknown } | { ok: false }
 
@@ -81,6 +88,8 @@ export function extractJson(raw: unknown): ExtractedJson {
 
 const KINDS = new Set<string>(['decision', 'info', 'auto'])
 const SEVERITIES = new Set<string>(['high', 'normal', 'low'])
+const ASKS = new Set<string>(['judgment', 'permission', 'clarification'])
+const EFFECTS = new Set<string>(['read', 'write-code', 'destructive', 'external', 'spend'])
 const MAX_DELAY_MS = 24 * 60 * 60 * 1000
 
 /** 自动动作只支持「到点在原会话里补一句话」这一种，先把契约收窄。 */
@@ -138,6 +147,14 @@ export function coerceCards(value: unknown): CoercedCards {
     const severity: CardSeverity = SEVERITIES.has(String(raw.severity))
       ? (raw.severity as CardSeverity)
       : 'normal'
+    const ask: AskKind = ASKS.has(String(raw.ask)) ? (raw.ask as AskKind) : 'judgment'
+    const effect: Effect = EFFECTS.has(String(raw.effect)) ? (raw.effect as Effect) : 'write-code'
+    const candidates = Array.isArray(raw.candidates)
+      ? raw.candidates
+          .map((item) => String(item).trim())
+          .filter(Boolean)
+          .slice(0, 8)
+      : []
     cards.push({
       title: title.slice(0, 200),
       detail: String(raw.detail ?? raw.summary ?? raw.note ?? '')
@@ -149,6 +166,12 @@ export function coerceCards(value: unknown): CoercedCards {
       reason: String(raw.reason ?? '')
         .trim()
         .slice(0, 300),
+      ask,
+      scope: String(raw.scope ?? '')
+        .trim()
+        .slice(0, 400),
+      effect,
+      candidates,
     })
   }
   return { ok: true, cards }

@@ -13,6 +13,7 @@ import type { RouteDeps } from './deps'
 import { createInspectHandler } from './inspect'
 import { createModelsHandler } from './models'
 import { createPolicyHandler } from './policy'
+import { createPresenceHandler } from './presence'
 import { createSettingsHandler } from './settings'
 import { createTimelineHandler } from './timeline'
 import { createTitlesHandler } from './titles'
@@ -123,6 +124,12 @@ function cardRoutes(deps: RouteDeps): RouteSpec[] {
 /** 设置与只读面板：模型、诊断、策略、工作区、时间线、标题。 */
 function panelRoutes(deps: RouteDeps): RouteSpec[] {
   return [
+    {
+      kind: 'exact',
+      path: API_ROUTES.presence,
+      methods: ['POST'],
+      handler: createPresenceHandler(deps),
+    },
     {
       kind: 'exact',
       path: API_ROUTES.settings,

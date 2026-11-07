@@ -12,6 +12,7 @@ import { Observer } from './observer/observer'
 import { registerObserverPreset } from './observer/preset'
 import { SeenTracker } from './observer/seen'
 import { observeTurns, type PluginRoot } from './observer/trigger'
+import type { Presence } from './presence'
 import { installQuestionHook } from './question/hook'
 import { captureQuestion, recordChatAnswer, recordQuestionCard } from './question/record'
 import { registerRoutes, type WebServerLike } from './routes/register'
@@ -30,6 +31,7 @@ export interface WireDeps {
   precedents: PrecedentStore
   log: Log
   state: PluginState
+  presence: Presence
 }
 
 const RUNTIME_SERVICES = [
@@ -132,7 +134,7 @@ export function wireDecision(root: PluginRoot, deps: WireDeps): Decision {
 
 /** 观察者 + 触发接线；建卡成功后把这一批卡交给决策阶段。 */
 export function wireObserver(root: PluginRoot, deps: WireDeps, decision: Decision): Observer {
-  const { cards, settings, records, log, state } = deps
+  const { cards, settings, records, log, state, presence } = deps
   // 触发端记「用户最后发言」的游标，观察者建卡时据此判断这批内容他是不是已经看过。
   const seen = new SeenTracker()
   const observer = new Observer({
@@ -154,6 +156,8 @@ export function wireObserver(root: PluginRoot, deps: WireDeps, decision: Decisio
     log,
     captureQuestion: (sessionId, data) => captureQuestion(cards, log, sessionId, data),
     seen,
+    getCtx: () => state.runtime,
+    presence,
   })
   return observer
 }
@@ -192,7 +196,18 @@ export function wireRoutes(
     syncPreset: () => Promise<void>
   },
 ): void {
-  const { cards, settings, precedents, records, log, state, scanner, decision, syncPreset } = deps
+  const {
+    cards,
+    settings,
+    precedents,
+    records,
+    log,
+    state,
+    scanner,
+    decision,
+    syncPreset,
+    presence,
+  } = deps
   root.inject(['webServer'], (ctx: unknown) => {
     const webServer = (ctx as { webServer?: WebServerLike }).webServer
     if (!webServer) return
@@ -209,6 +224,7 @@ export function wireRoutes(
         runtime: () => state.runtime,
         scanner,
         syncPreset,
+        presence,
       },
       log,
       effect: (fn, label) => root.effect(fn, label),

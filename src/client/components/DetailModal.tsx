@@ -108,9 +108,11 @@ function ModalBody({
 }: BodyProps) {
   const card = detail.card
   const advice = card?.advice ?? null
+  // 判断卡才展示票拟方案；许可/澄清的动作在 ModalCardBlock 里。
+  const showAdvice = Boolean(card && advice && (!advice.ask || advice.ask === 'judgment'))
   return (
     <div className="dtc-modal-body">
-      {card && advice ? (
+      {card && advice && showAdvice ? (
         <AdviceBlock
           t={t}
           advice={advice}

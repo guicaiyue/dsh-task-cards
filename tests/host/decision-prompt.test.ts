@@ -56,12 +56,12 @@ describe('提示词插件双模式', () => {
     apply(observer.ctx, { settingsFile: file, mode: 'observer' })
     expect(observer.sections).toHaveLength(1)
     expect(observer.sections[0]?.name).toBe('task-cards:observer-prompt')
-    expect(observer.sections[0]?.text).toBe('观察者提示词：把事记成卡')
+    expect(observer.sections[0]?.text).toContain('观察者提示词：把事记成卡')
 
     const decision = fakePromptCtx()
     apply(decision.ctx, { settingsFile: file, mode: 'decision' })
     expect(decision.sections[0]?.name).toBe('task-cards:decision-prompt')
-    expect(decision.sections[0]?.text).toBe('决策画像：先问三个月后还有没有痕迹')
+    expect(decision.sections[0]?.text).toContain('决策画像：先问三个月后还有没有痕迹')
   })
 
   it('decision 模式不读 systemPrompt；decisionPrompt 为空时用默认画像', () => {

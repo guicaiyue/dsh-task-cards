@@ -14,6 +14,7 @@ import { isClosed } from '../../shared/state'
 import type { Store } from '../cards/store'
 import type { HostRuntime, Log } from '../host-api'
 import { deliverToOrigin } from '../question/deliver'
+import { checkAnswer } from './answer-guard'
 
 /** 卡上记的事件类型：自动执行成功是 advice-applied，失败是 advice-applied:failed。 */
 export const ADVICE_APPLIED_EVENT = 'advice-applied'
@@ -37,6 +38,22 @@ export async function autoApplyAdvice(deps: AutoApplyDeps, card: Card): Promise<
   if (!deps.allowed || !card.advice?.autoApply) return false
   const text = chosenAnswerOf(card)
   if (!text || isClosed(card.status) || !card.origin?.sessionId) return false
+  const check = checkAnswer(card, text)
+  if (!check.ok) {
+    await deps.cards.patch(
+      card.id,
+      {
+        advice: {
+          ...card.advice,
+          autoApply: false,
+          blockedReasons: check.reasons,
+        },
+      },
+      'advice-blocked',
+    )
+    deps.log(`自动执行被拦：${card.id} — ${check.reasons.join(', ')}`)
+    return false
+  }
   const result = await deliverToOrigin({
     cards: deps.cards,
     getCtx: deps.getCtx,

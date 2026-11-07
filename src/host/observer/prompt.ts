@@ -45,8 +45,34 @@ function readSettings(file: string | undefined): Record<string, unknown> {
 function readPrompt(file: string | undefined, mode: PromptMode): string {
   const raw = readSettings(file)
   const custom = mode === 'decision' ? raw.decisionPrompt : raw.systemPrompt
-  if (typeof custom === 'string' && custom.trim()) return custom
+  if (typeof custom === 'string' && custom.trim()) return ensureFields(custom, mode)
   return mode === 'decision' ? DEFAULT_DECISION_PROMPT : DEFAULT_PROMPT
+}
+
+/** 旧版自定义提示词没有新字段；追加一段系统要求，不覆盖用户原文。 */
+function ensureFields(prompt: string, mode: PromptMode): string {
+  if (mode === 'decision') {
+    const missing = ['"ask"', '"effect"', '"requires"', '<capabilities>'].filter(
+      (token) => !prompt.includes(token),
+    )
+    if (!missing.length) return prompt
+    return `${prompt}
+
+## v0.4 必需字段（系统追加，不可省略）
+- 每张 decision 卡必须输出 ask：judgment / permission / clarification。
+- 每个方案必须输出 effect（read / write-code / destructive / external / spend）和 requires。
+- requires 只能从 <capabilities> 里选；没有的能力不要写。
+- answer 必须能独立成立，不得出现「这张卡」「上一张」这类没有具体目标的指代。`
+  }
+  const missing = ['"ask"', '系统代发', '"reason"'].filter((token) => !prompt.includes(token))
+  if (!missing.length) return prompt
+  return `${prompt}
+
+## v0.4 必需字段（系统追加，不可省略）
+- 每张卡必须输出 reason（一句话分类凭据）。
+- decision 卡必须输出 ask：judgment / permission / clarification。
+- 输入里的「系统代发」不是用户原话，不要把它当用户意图。
+- 输出 JSON 顶层是 {"cards":[...]}。`
 }
 
 interface PromptCtx {

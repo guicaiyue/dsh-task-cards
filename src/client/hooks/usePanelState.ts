@@ -61,7 +61,11 @@ export function usePanelState(uiWorkspace?: {
   const settingsState = useSettings(cardState.setError)
   const decisionsState = useDecisions(cardState.setError)
   const detailApi = useDetail()
-  usePresence()
+  usePresence({
+    tab,
+    sessionId: detailApi.detail?.sessionId,
+    openCardId: detailApi.detail?.card?.id,
+  })
   usePanelLoads(tab, settingsState, decisionsState, detailApi.detail)
 
   const wiring = usePanelWiring({

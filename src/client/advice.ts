@@ -50,6 +50,22 @@ export function laneLabel(t: Translate, lane: CardKind): string {
   return t(`lane_${lane}`)
 }
 
+/** 影响等级 → 人话：read / write-code / destructive / external / spend。 */
+export function effectLabel(t: Translate, effect?: string): string {
+  return t(`effect_${effect || 'write-code'}`)
+}
+
+/** 自动执行被拦的原因 → 人话；未知原因原样显示，方便排查。 */
+export function blockedReasonLabel(t: Translate, reason: string): string {
+  if (reason.startsWith('missing-capability:')) {
+    return t('blockedMissing', { cap: reason.slice('missing-capability:'.length) })
+  }
+  if (reason === 'deictic-without-target') return t('blockedDeictic')
+  if (reason.startsWith('effect:'))
+    return t('blockedEffect', { effect: effectLabel(t, reason.slice(7)) })
+  return t('blockedGeneric', { reason })
+}
+
 /** 系统是否已经替用户执行过这张卡的票拟（宿主写 advice-applied 事件）。 */
 export function isAdviceApplied(card: Pick<Card, 'events'>): boolean {
   return card.events.some((event) => event.type === 'advice-applied')

@@ -226,7 +226,10 @@ describe('批红 = 把话推回原会话', () => {
       expect(res.json).toMatchObject({ ok: true, pushed: true })
 
       // 推的是 advice.chosen（1）那句，并且推给了 origin.sessionId
-      expect(prompts).toEqual([{ sessionId: 's-approve', text: '直接重构整个登录页' }])
+      expect(prompts).toHaveLength(1)
+      expect(prompts[0]?.sessionId).toBe('s-approve')
+      expect(prompts[0]?.text).toContain('直接重构整个登录页')
+      expect(prompts[0]?.text).toContain(card.id)
 
       const after = findCard(await listCards(routes), card.id)
       expect(after?.status).toBe('done')
@@ -302,12 +305,12 @@ describe('批红 = 把话推回原会话', () => {
       await call(routes, 'POST', `${API}/action`, {
         body: JSON.stringify({ id: explicit.id, action: 'approve', option: '照第 3 版做' }),
       })
-      expect(prompts[0]?.text).toBe('照第 3 版做')
+      expect(prompts[0]?.text).toContain('照第 3 版做')
 
       await call(routes, 'POST', `${API}/action`, {
         body: JSON.stringify({ id: bare.id, action: 'approve' }),
       })
-      expect(prompts[1]?.text).toBe('已批准：要不要改配色。按这个方向继续。')
+      expect(prompts[1]?.text).toContain('已批准：要不要改配色。按这个方向继续。')
 
       const after = findCard(await listCards(routes), bare.id)
       expect(after?.answer).toBe('已批准：要不要改配色。按这个方向继续。')
@@ -328,6 +331,93 @@ describe('批红 = 把话推回原会话', () => {
       expect(prompts).toHaveLength(0)
       const after = findCard(await listCards(routes), card.id)
       expect(after?.status).toBe('acknowledged')
+    } finally {
+      dispose()
+    }
+  })
+})
+
+describe('许可 / 澄清卡', () => {
+  beforeEach(() => {
+    fs.rmSync(DATA_DIR, { recursive: true, force: true })
+  })
+
+  const PERMISSION: Advice = {
+    ...ADVICE,
+    ask: 'permission',
+    effect: 'write-code',
+    requires: ['session.reply'],
+    action: 'git commit -m "test"',
+    scope: 'src/**',
+    reversible: true,
+    options: [],
+  }
+
+  it('许可卡批准：推固定模板，动作和范围都在句子里', async () => {
+    const card = await seedCard(
+      '提交改动',
+      { origin: { sessionId: 's-perm' }, ask: 'permission' },
+      PERMISSION,
+    )
+    const { routes, prompts, dispose } = harness('ok')
+    try {
+      const res = await call(routes, 'POST', `${API}/action`, {
+        body: JSON.stringify({ id: card.id, action: 'approve' }),
+      })
+      expect(res.status).toBe(200)
+      expect(prompts[0]?.text).toContain('已允许：git commit -m "test"')
+      expect(prompts[0]?.text).toContain('范围：src/**')
+      const after = findCard(await listCards(routes), card.id)
+      expect(after?.status).toBe('done')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('许可卡拒绝：推「不允许」模板，卡结束并落一条判例', async () => {
+    const card = await seedCard(
+      '拒绝提交',
+      { origin: { sessionId: 's-deny' }, ask: 'permission' },
+      PERMISSION,
+    )
+    const { routes, prompts, dispose } = harness('ok')
+    try {
+      const res = await call(routes, 'POST', `${API}/action`, {
+        body: JSON.stringify({ id: card.id, action: 'deny' }),
+      })
+      expect(res.status).toBe(200)
+      expect(res.json).toMatchObject({ ok: true, pushed: true })
+      expect(prompts[0]?.text).toContain('不允许：git commit -m "test"')
+      const after = findCard(await listCards(routes), card.id)
+      expect(after?.status).toBe('done')
+      expect(await listPrecedents(routes)).toHaveLength(1)
+    } finally {
+      dispose()
+    }
+  })
+
+  it('澄清卡作答：把问题和补充值拼成一句发回去', async () => {
+    const card = await seedCard(
+      '是哪张卡',
+      { origin: { sessionId: 's-clar' }, ask: 'clarification' },
+      {
+        ...ADVICE,
+        ask: 'clarification',
+        question: '你指的是哪张卡？',
+        candidates: ['c-1'],
+        effect: 'read',
+      },
+    )
+    const { routes, prompts, dispose } = harness('ok')
+    try {
+      const res = await call(routes, 'POST', `${API}/action`, {
+        body: JSON.stringify({ id: card.id, action: 'answer', option: 'c-1' }),
+      })
+      expect(res.status).toBe(200)
+      expect(prompts[0]?.text).toContain('补充信息：c-1')
+      expect(prompts[0]?.text).toContain('你指的是哪张卡？')
+      const after = findCard(await listCards(routes), card.id)
+      expect(after?.status).toBe('done')
     } finally {
       dispose()
     }

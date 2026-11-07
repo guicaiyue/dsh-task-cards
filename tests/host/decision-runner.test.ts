@@ -303,7 +303,10 @@ describe('决策会话', () => {
         {
           cardId,
           lane: 'decision',
+          ask: 'judgment',
           verdict: 'modify',
+          effect: 'read',
+          requires: ['session.reply'],
           summary: '先跑通最小验证',
           chosen,
           autoApply,
@@ -360,7 +363,8 @@ describe('决策会话', () => {
 
     // 推给了原会话，不是决策会话
     const delivered = host.prompts.filter((item) => item.sessionId === ORIGIN)
-    expect(delivered.map((item) => item.text)).toEqual(['先跑通最小验证再谈重构'])
+    expect(delivered).toHaveLength(1)
+    expect(delivered[0]?.text).toContain('先跑通最小验证再谈重构')
 
     // 自动执行不落判例：判例只能由人的动作产生
     expect(precedents.list()).toHaveLength(0)

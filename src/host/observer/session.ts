@@ -2,7 +2,7 @@
 //
 // 失败返回原因而不是抛：上层还有一次重试，重试用尽才记异常。
 
-import type { Card, CardDraft, Settings } from '../../shared/contract'
+import type { Card, CardDraft, OrderSource, Settings } from '../../shared/contract'
 import type { AgentHandleLike, HostRuntime, Log, SessionControllerLike } from '../host-api'
 import { OBSERVER_PRESET_ID, OBSERVER_SESSION_PREFIX } from './constants'
 import { coerceCards, extractJson } from './extract'
@@ -14,10 +14,26 @@ export interface ObserverTurnInput {
   originSessionId: string
   turn: number
   replyText: string
-  turns?: Array<{ user?: string; assistant?: string }>
+  turns?: Array<{
+    user?: string
+    assistant?: string
+    provenance?: OrderSource
+    at?: number
+    cardId?: string
+  }>
   cwd?: string
   /** 回合结束时的「用户最后发言」游标；建卡时用它判断用户是不是已经回来了。 */
   seenMark?: number
+  /** 触发本轮的最近一条真人原话：即使窗口被心跳占满也要带上。 */
+  triggerUserMessage?: string
+  triggerUserAt?: number
+  /** 触发这条回复的消息来源：真人 / 系统代发 / 其它。 */
+  triggerSourceKind?: OrderSource
+  triggerCardId?: string
+  /** 面板当前打开的卡 / 页签。 */
+  ui?: { tab?: string; openCardId?: string }
+  /** 同会话最近几张卡。 */
+  recentCards?: Array<{ id: string; title: string; kind: string; status: string }>
 }
 
 export interface RunOnceResult {

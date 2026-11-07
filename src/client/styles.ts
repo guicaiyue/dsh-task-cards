@@ -221,6 +221,19 @@ body[data-ds-dark-theme] .dtc-page {
 .dtc-unread-dot-ring { fill: var(--dsw-specific-sidebar-fill, #F8FAFC); }
 body[data-ds-dark-theme] .dtc-unread-dot { fill: #F87171; }
 body[data-ds-dark-theme] .dtc-unread-dot-ring { fill: var(--dsw-specific-sidebar-fill, #0B1220); }
+/* ── 来源与三车道 ──────────────────────────────────────── */
+.dtc-source-block { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--dtc-border);
+  border-radius: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 11.5px;
+  color: var(--dtc-muted); }
+.dtc-source-row { display: flex; gap: 8px; align-items: baseline; }
+.dtc-source-row > span:first-child { flex: 0 0 auto; color: var(--dtc-faint); }
+.dtc-permission, .dtc-clarification { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.dtc-permission-title { font-size: 11.5px; color: var(--dtc-faint); }
+.dtc-permission-action { font-size: 12.5px; line-height: 1.5; color: var(--dtc-ink); }
+.dtc-permission-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--dtc-muted); }
+.dtc-input { flex: 1; min-width: 120px; padding: 5px 8px; border-radius: 6px;
+  border: 1px solid var(--dtc-border); background: var(--dtc-surface); color: var(--dtc-ink);
+  font-size: 12px; }
 `
 
 /** 注入样式；返回卸载函数。重复调用只会留一个 <style>。 */

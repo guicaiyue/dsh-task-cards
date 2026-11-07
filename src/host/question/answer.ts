@@ -43,13 +43,16 @@ export async function answerQuestion(
   if (!ctx?.sessionController) throw new StoreError('NO_RUNTIME', '宿主缺少 sessionController')
   if (!sessionId) throw new StoreError('NO_SESSION', '这张卡没有可回访的会话')
   const controller = new AbortController()
+  // 文本标记让观察者和模型都能认出这是系统代发，而不是用户原话。
+  const marked = `〔任务卡答复 ${card.id}「${card.title}」〕\n${text}`
   try {
     await ctx.sessionController.prompt(
       {
         requestId: `card-answer-${Date.now().toString(36)}`,
         sessionId,
         mode: 'queue',
-        content: [{ type: 'text', text }],
+        content: [{ type: 'text', text: marked }],
+        source: { kind: 'card-answer', cardId: card.id, cardTitle: card.title },
       },
       controller.signal,
     )

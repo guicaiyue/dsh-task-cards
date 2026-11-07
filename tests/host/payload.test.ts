@@ -27,18 +27,33 @@ describe('观察者输入', () => {
     expect(cut).not.toContain('\uFFFD')
   })
 
-  it('最多带三轮「用户 + 模型」，越靠后越新', () => {
-    const turns = Array.from({ length: 5 }, (_, i) => ({ user: `问 ${i}`, assistant: `答 ${i}` }))
+  it('按来源分节：人类轮次带「用户原话」标题，越靠后越新', () => {
+    const turns = Array.from({ length: 3 }, (_, i) => ({
+      provenance: 'human' as const,
+      user: `问 ${i}`,
+      assistant: `答 ${i}`,
+    }))
     const payload = buildPayload(turns, '最终回复', 100000)
-    expect(payload).toContain('【第 1 轮】')
-    expect(payload).toContain('【第 5 轮】')
-    expect(payload).toContain('问 4')
+    expect(payload).toContain('【第 1 轮 · 用户原话】')
+    expect(payload).toContain('【第 3 轮 · 用户原话】')
+    expect(payload).toContain('问 2')
     expect(payload).not.toContain('问 -1')
   })
 
-  it('没有轮次时退回「最后一轮」', () => {
+  it('系统代发标成「系统代发」，不写成用户', () => {
+    const payload = buildPayload(
+      [{ provenance: 'card-answer', user: '跑一次复现', cardId: 'c-1' }],
+      '结果如下',
+      100000,
+    )
+    expect(payload).toContain('系统代发（来源：任务卡 c-1）')
+    expect(payload).toContain('系统：跑一次复现')
+    expect(payload).not.toContain('用户：跑一次复现')
+  })
+
+  it('没有轮次时退回「本轮模型最终输出」', () => {
     const payload = buildPayload([], '只有这一句', 100000)
-    expect(payload).toContain('【最后一轮】')
+    expect(payload).toContain('【本轮 · 模型最终输出】')
     expect(payload).toContain('只有这一句')
   })
 

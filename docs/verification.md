@@ -37,6 +37,18 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:13080/dsh-task-cards/a
 | 客户端热重载 | 改 `src/client/**` 并 `pnpm dev`，浏览器不刷新也会出现新 UI（宿主 500 ms 轮询 bundle） |
 | 宿主热重载 | 改 `src/host/**` 并 `pnpm dev`，**1–2 s 后**接口行为即变（不用重启 dsh）；用一次可观察的改动验证（如错误码/文案）。**但 chokidar 监听会静默死掉**：新端点一直是 404 而客户端已是新版，就是它；`systemctl restart dsh.service`（`NODE_ENV=production` 的部署里别把热重载当默认前提） |
 
+## 2.1 三车道与来源（v0.4）
+
+| 检查 | 期望 |
+| :-- | :-- |
+| 判断卡（`ask=judgment`） | 行上有「判断」chip；主按钮「批准」，详情展开票拟方案 |
+| 许可卡（`ask=permission`） | 行上有「许可」chip；主按钮「允许一次」、次按钮「拒绝」；详情显示「将执行 / 范围 / 影响 / 可撤回」 |
+| 澄清卡（`ask=clarification`） | 行上有「澄清」chip；主按钮「补充信息」；详情显示问题、候选按钮、输入框（输入前「提交」禁用） |
+| 来源块 | 详情里能看到「你说过」的真人原话；系统代发时显示「系统代发」和来源卡 id；面板打开着别的卡时显示「面板当时打开」 |
+| 自动执行闸门 | `advice.blockedReasons` 非空时，详情显示人话原因（缺能力 / 指代不明 / 影响等级不是只读） |
+| 旧卡兼容 | 没有 `ask` 的历史卡按「判断」显示，不出现 `ask_undefined` |
+| presence | 面板打开时每 20 s `POST /presence`，宿主返回 `{ok:true}`；打开卡片详情后心跳里带 `sessionId` / `openCardId` |
+
 ## 3. 观察者（可选，会产生真实模型调用）
 
 1. 在任意会话跑一轮长回复（> `minReplyChars`）。

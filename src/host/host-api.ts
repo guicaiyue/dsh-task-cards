@@ -42,6 +42,12 @@ export interface PromptRequest {
   sessionId: string
   mode: 'queue'
   content: Array<{ type: 'text'; text: string }>
+  /** 前向兼容：宿主支持时持久化来源；不支持时忽略，文本标记仍生效。 */
+  source?: {
+    kind: 'card-answer'
+    cardId?: string
+    cardTitle?: string
+  }
 }
 
 export interface AgentsLike {

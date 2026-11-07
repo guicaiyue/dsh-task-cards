@@ -11,6 +11,7 @@
 
 import { PrecedentStore, RecordStore, SettingsStore, Store } from './cards/store'
 import type { PluginRoot } from './observer/trigger'
+import { Presence } from './presence'
 import {
   type PluginState,
   type WireDeps,
@@ -34,7 +35,8 @@ export function apply(root: PluginRoot): void {
   // Cordis 的注入规则：先声明，再取属性。拿不到服务时保持 null，
   // 观察者会记一条「宿主缺少依赖」的异常记录，而不是让插件挂掉。
   const state: PluginState = { runtime: null, presetCtx: null, disposeQuestionHook: () => {} }
-  const deps: WireDeps = { cards, settings, records, precedents, log, state }
+  const presence = new Presence()
+  const deps: WireDeps = { cards, settings, records, precedents, log, state, presence }
 
   wireQuestionHook(root, deps)
   const decision = wireDecision(root, deps)

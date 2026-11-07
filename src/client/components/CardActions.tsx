@@ -18,8 +18,22 @@ interface Props extends CardHandlers {
 }
 
 /** 主操作：决策卡批准、手写备忘知道了、自动卡立即执行。通知卡没有主操作。 */
-function PrimaryAction({ t, card, busy, onAction }: Props) {
+function PrimaryAction({ t, card, busy, onAction, onDetail }: Props) {
   if (card.kind === 'decision') {
+    if (card.ask === 'clarification') {
+      return (
+        <button
+          type="button"
+          className="dtc-btn is-primary"
+          disabled={busy}
+          onClick={() =>
+            onDetail({ card, title: card.title, sessionId: card.origin?.sessionId || '' })
+          }
+        >
+          {t('clarifyOpen')}
+        </button>
+      )
+    }
     return (
       <button
         type="button"
@@ -27,7 +41,7 @@ function PrimaryAction({ t, card, busy, onAction }: Props) {
         disabled={busy}
         onClick={() => onAction(card, 'approve')}
       >
-        {t('approve')}
+        {card.ask === 'permission' ? t('allowOnce') : t('approve')}
       </button>
     )
   }
@@ -56,9 +70,9 @@ function PrimaryAction({ t, card, busy, onAction }: Props) {
   )
 }
 
-/** 其余操作：忽略/重开、查看详情、删除。通知卡只有删除（它已经自动已读）。 */
-function RestActions({ t, card, busy, closed, onAction, onDetail }: Props) {
-  const remove = (
+/** 删除：所有车道都有。 */
+function RemoveButton({ t, card, busy, onAction }: Props) {
+  return (
     <button
       type="button"
       className="dtc-btn is-danger"
@@ -68,44 +82,69 @@ function RestActions({ t, card, busy, closed, onAction, onDetail }: Props) {
       {t('remove')}
     </button>
   )
-  // 通知卡没有「忽略」：忽略一条通知和读过它没有区别，判例库也不该收这个选择。
-  if (card.kind === 'info') {
-    return <>{remove}</>
+}
+
+/** 关闭动作：重开 / 许可拒绝 / 普通忽略。 */
+function CloseAction({ t, card, busy, closed, onAction }: Props) {
+  if (closed) {
+    return (
+      <button
+        type="button"
+        className="dtc-btn"
+        disabled={busy}
+        onClick={() => onAction(card, 'reopen')}
+      >
+        {t('reopen')}
+      </button>
+    )
+  }
+  if (card.kind === 'decision' && card.ask === 'permission') {
+    return (
+      <button
+        type="button"
+        className="dtc-btn is-danger"
+        disabled={busy}
+        onClick={() => onAction(card, 'deny')}
+      >
+        {t('deny')}
+      </button>
+    )
   }
   return (
+    <button
+      type="button"
+      className="dtc-btn"
+      disabled={busy}
+      onClick={() => onAction(card, 'dismiss')}
+    >
+      {t('dismiss')}
+    </button>
+  )
+}
+
+/** 决策卡查看详情。 */
+function DetailButton({ t, card, busy, closed, onDetail }: Props) {
+  if (card.kind !== 'decision' || closed) return null
+  return (
+    <button
+      type="button"
+      className="dtc-btn"
+      disabled={busy}
+      onClick={() => onDetail({ card, title: card.title, sessionId: card.origin?.sessionId || '' })}
+    >
+      {t('detail')}
+    </button>
+  )
+}
+
+/** 其余操作：通知卡只有删除；其它卡是关闭 + 详情 + 删除。 */
+function RestActions(props: Props) {
+  if (props.card.kind === 'info') return <RemoveButton {...props} />
+  return (
     <>
-      {closed ? (
-        <button
-          type="button"
-          className="dtc-btn"
-          disabled={busy}
-          onClick={() => onAction(card, 'reopen')}
-        >
-          {t('reopen')}
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="dtc-btn"
-          disabled={busy}
-          onClick={() => onAction(card, 'dismiss')}
-        >
-          {t('dismiss')}
-        </button>
-      )}
-      {card.kind === 'decision' && !closed ? (
-        <button
-          type="button"
-          className="dtc-btn"
-          disabled={busy}
-          onClick={() =>
-            onDetail({ card, title: card.title, sessionId: card.origin?.sessionId || '' })
-          }
-        >
-          {t('detail')}
-        </button>
-      ) : null}
-      {remove}
+      <CloseAction {...props} />
+      <DetailButton {...props} />
+      <RemoveButton {...props} />
     </>
   )
 }

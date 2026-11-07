@@ -26,12 +26,13 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | :-- | :-- | :-- |
 | `kind` | `decision` / `info` / `auto` | 要我决策 / 要我知晓 / 自动处理 |
 | `severity` | `high` / `normal` / `low` | 视觉权重与排序 |
+| `ask` | `judgment` / `permission` / `clarification` | 决策卡再分：判断（A/B 取舍）/ 许可（yes-no 一个动作）/ 澄清（只缺一条事实） |
 | `status` | `open` / `acknowledged` / `scheduled` / `done` / `dismissed` | 状态机，见下 |
 | `action` | `{type, delayMs, input, sessionId?}` 或 `null` | 到点要补的那句话；有 action 才可能 `scheduled` |
 | `interaction` | `reply` / `question` | 普通回合记录 / 模型提问把对话卡住了 |
 | `question` | `{sessionId?, callId?, items[]}` 或 `null` | 问题卡的选项，面板据此作答 |
-| `origin` | `{sessionId?, turn?, observerSessionId?, reason}` | 追溯：哪次会话、第几轮、哪个观察者会话；`reason` 是观察者的分类凭据（一句话） |
-| `advice` | `{verdict, summary, options[], chosen, autoApply, basis, precedentIds[], confidence, question, lane, applied, at}` 或 `null` | 决策代理人的票拟；`chosen` 是推荐方案序号，`autoApply` 表示该推荐可逆且便宜、允许系统直接执行；见 [决策代理人](decision-agent.md) |
+| `origin` | `{sessionId?, turn?, observerSessionId?, reason, userQuote?, userQuoteAt?, sourceKind?, sourceCardId?, uiCardId?, relatedCardIds?}` | 追溯：哪次会话、第几轮、哪个观察者会话；`reason` 是分类凭据，`userQuote` 是触发这张卡的真人原话，`sourceKind` 区分真人 / 任务卡系统代发 / 其它系统注入，`uiCardId` 是触发时面板打开的卡，`relatedCardIds` 是同会话最近几张卡 |
+| `advice` | `{verdict, summary, options[], chosen, autoApply, basis, precedentIds[], confidence, question, lane, ask, effect, requires[], action, scope, reversible, candidates[], blockedReasons[], applied, at}` 或 `null` | 决策代理人的票拟；`chosen` 是推荐方案序号，`autoApply` 表示该推荐可逆且便宜、允许系统直接执行；见 [决策代理人](decision-agent.md) |
 | `silent` | `true` / `false` | 免打扰：建卡时就判定「用户在原会话里已看过」，落盘即 `acknowledged`，不计未读、不亮圆点；只对 `info` 卡成立 |
 | `events` | `[{at, type, via?}]` | 追加式审计：created / completed / answered / auto-executed … |
 
@@ -45,7 +46,8 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 | `reopen` | `open` | `reopened` |
 | `answer` | `done` | `answered` |
 | `adopt` | `done`（用方案里的 `answer` 走 `answer` 那条路） | `answered` |
-| `approve` | `done`，**并把一句话投回原会话**；无会话/投递失败也照样结束（返回 `pushed:false`） | `approved` |
+| `approve` | `done`，**并把一句话投回原会话**；许可卡用 `permissionAnswer(allow)` 固定模板，判断卡用票拟 `answer`；无会话/投递失败也照样结束（返回 `pushed:false`） | `approved` |
+| `deny` | `done`，**并把「不允许」模板投回原会话**；只对 `ask=permission` 成立 | `denied` |
 | `mark-reworked` | 不变（判例改 `reworked`） | `reworked` |
 | `run-now` / 扫描器执行成功 | `done` | `auto-executed` |
 | 扫描器执行失败 | `open` + `lastError` | `auto-failed` |
@@ -54,6 +56,8 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 `done` / `dismissed` / `acknowledged` 是「已结束」（`CLOSED_STATUSES`），面板的 KPI 与分组据此计算。「要我知晓」这一格例外：它数最近 24 小时的知晓卡，读掉不会清零，超过 24 小时才掉出去。
 
 **通知卡不走「处理」**：观察者写的 `info` 卡（`source=agent`）是通知，行上没有「知道了 / 忽略」两个按钮——两个动作在状态上完全等价，差别只是 `dismiss` 会写一条判例（已限制为只对决策卡生效）。「看到即已读」的判定收在 `client/hooks/useReadOnScreen.ts`：页签在卡片页、文档可见、**卡在视口里连续停留 2 秒**三条同时成立才发 `acknowledge`——渲染出来不算，列表一屏之外不算，扫一眼划走也不算。人手写的 `info` 卡是备忘，保留「知道了」由人自己勾掉。
+
+**来源判定**：`observer/provenance.ts` 把 `user/message` 分成 `human` / `card-answer` / `system`；`card-answer` 优先看 `source.rpcId=card-answer-*`，没有就看文本标记 `〔任务卡答复 <卡 id>「标题」〕`；`time-context` 等系统注入不算用户轮次，也不更新「用户已回来」游标。观察者输入里人类轮次标「用户原话」，系统代发标「系统代发（来源：任务卡 …）」。
 
 **免打扰（`silent`）在宿主侧判定**：观察者是异步跑的（另起一个模型会话，几秒到几十秒）。回合结束时 `SeenTracker` 记下该会话「用户最后发言」的游标；建卡时如果用户已经在原会话里说了下一句，这一轮的回复他必然看过，`info` 卡直接以 `acknowledged` 落盘并标 `silent`（事件 `acknowledged/via=silent`），不进未读、不亮圆点。决策卡不免打扰——永远要人回应；带 `action` 的自动卡也不会被改成已读，它到点还要执行。
 
@@ -72,8 +76,16 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 ```
 card.advice = { verdict: approve|reject|modify|wait, summary, confidence, question,
                 options: [{ name, cost, gain, worst, answer, verdict }],  // 最多 3 个
-                chosen, autoApply, basis, precedentIds[], lane, applied, at }
+                chosen, autoApply, basis, precedentIds[], lane, applied, at,
+                ask: judgment|permission|clarification,
+                effect: read|write-code|destructive|external|spend,
+                requires: string[], action, scope, reversible, candidates[],
+                blockedReasons: string[] }
 ```
+
+**三车道**：`judgment` 给 2–3 个方案；`permission` 只给一个动作 + 范围 + 影响，options 为空；`clarification` 只给 question + candidates，options 为空。许可/澄清的答复由宿主模板生成，不让模型自由写「贴回这张卡」这类指代。
+
+**自动执行闸门**（`decision/answer-guard.ts`）：`autoApply=true` 时必须同时满足 `effect=read`、`requires` 全在当前能力清单（`session.reply` / `cards.complete` / `cards.acknowledge` / `cards.dismiss`）、句子不含未解析的指代、有 origin.sessionId；否则不投递，把原因写进 `advice.blockedReasons` 并在详情里显示。人工批准只拦不存在的能力，不拦指代。
 
 - `verdict`：`approve` 照办 / `reject` 不该做 / `modify` 改后批 / `wait` 现在别决（配 `question` 追问）。
 - `applied`：车道纠正是否真的落盘。代理人只允许把 `decision` 降成 `info`（可逆、不需要人动手），反向不落盘。
@@ -94,7 +106,8 @@ precedent = { id, at, cardId, title, question, choice, outcome: unknown|valid|re
 | 方法 | 路径 | 用途 |
 | :-- | :-- | :-- |
 | GET/POST | `/cards` | 列表 / 建卡 |
-| POST | `/action` | complete / acknowledge / dismiss / reopen / delete / run-now / answer / adopt / mark-reworked |
+| POST | `/presence` | 面板在线心跳：`{active, sessionId?, tab?, openCardId?}`；宿主据此解析「这张卡」 |
+| POST | `/action` | complete / acknowledge / dismiss / reopen / delete / run-now / answer / adopt / approve / deny / mark-reworked |
 | GET/POST | `/settings` | 观察者设置 |
 | GET | `/models` | 可选模型目录 |
 | GET | `/inspect` | 诊断：请求头里的工具与最近事件（`?id=&events=1`） |
@@ -103,7 +116,6 @@ precedent = { id, at, cardId, title, question, choice, outcome: unknown|valid|re
 | GET | `/timeline` | 详情弹窗的时间线（`?id=`） |
 | GET | `/titles` | 批量取会话标题（`?ids=a,b`） |
 | GET/POST | `/decisions` | 判例 + 决策执行记录（`{precedents, records}`） / `mark-reworked`、`redecide` |
-| POST | `/presence` | 面板心跳（宿主未注册 = 静默忽略，客户端不依赖它） |
 
 错误统一为 `{ok:false, code, error}`：`400`（业务错误，code 稳定：`EMPTY_TITLE` `TITLE_TOO_LONG` `NOT_FOUND` `BAD_STATE` `MISSING_ID` `BAD_JSON` `BODY_TOO_LARGE` …）、`403`（跨站/非回环）、`405`（方法不对）、`500`（内部错误，带 `detail`）。
 

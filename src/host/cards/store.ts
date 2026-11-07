@@ -38,6 +38,7 @@ export interface CreateCardOptions {
   source?: unknown
   interaction?: unknown
   question?: unknown
+  ask?: unknown
   origin?: unknown
   /** 用户在原会话里已经看过了：落盘即 acknowledged，并留一条 `via: silent` 事件。 */
   silent?: unknown
@@ -49,6 +50,10 @@ function normalizeKind(value: unknown): CardKind {
 
 function normalizeSeverity(value: unknown): CardSeverity {
   return value === 'high' || value === 'low' ? value : 'normal'
+}
+
+function normalizeAsk(value: unknown): Card['ask'] {
+  return value === 'permission' || value === 'clarification' ? value : 'judgment'
 }
 
 function normalizeAction(value: unknown): CardAction | null {
@@ -113,6 +118,7 @@ export class Store {
       // 两种交互：question = 模型提问把对话卡住了；reply = 一轮回复结束后的记录。
       interaction: extra.interaction === 'question' ? 'question' : 'reply',
       question: (extra.question as Card['question']) ?? null,
+      ask: normalizeAsk(extra.ask),
       origin: (extra.origin as Card['origin']) ?? null,
       advice: null,
       silent,

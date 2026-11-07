@@ -1,19 +1,20 @@
 // 观察者接线。
 //
 // 触发点：agent/status 变 idle（一个回合真的结束了）。
-// 素材：本轮最后一条 assistant/message 的文本与 usage；本轮有没有用户输入。
-// 观察者自己的会话必须跳过，否则它也会触发观察者。
+// 素材：本轮最后一条 assistant/message、来源（真人/系统代发）、触发原话、UI 上下文。
+// 关键约束：time-context 心跳不占「用户轮次」；卡片答复是系统代发，不是用户原话。
 
 import type { Settings } from '../../shared/contract'
 import type { Store } from '../cards/store'
 import { isDecisionSession } from '../decision/ids'
-import type { Log, SessionEventLike } from '../host-api'
-import { asNumber, asRecord, asString } from '../host-api'
-import { textOf } from '../question/record'
+import type { HostRuntime, Log, SessionEventLike } from '../host-api'
+import { asRecord, asString } from '../host-api'
 import { isObserverSession } from './constants'
+import { lastHumanMessage, type PresenceLike, recentCardsOf } from './context'
 import type { Observer } from './observer'
-import { messageText } from './payload'
+import { provenanceOf } from './provenance'
 import type { SeenTracker } from './seen'
+import { rememberAssistantTurn, rememberIncoming, stateOfTracker, type TurnState } from './turns'
 import { observerWorkspace } from './workspace'
 
 export interface RootLike {
@@ -34,6 +35,10 @@ export interface TriggerDeps {
   captureQuestion: (sessionId: string, data: Record<string, unknown>) => Promise<void>
   /** 每个会话「用户最后发言」的游标：观察者据此判断用户是不是已经回到原会话。 */
   seen: SeenTracker
+  /** 宿主运行时：用于从会话日志里补读触发原话。 */
+  getCtx?: () => HostRuntime | null
+  /** 面板在线上下文：当前打开的卡 / 页签。 */
+  presence?: PresenceLike
 }
 
 interface SessionLike {
@@ -41,18 +46,8 @@ interface SessionLike {
   header?: Record<string, unknown>
 }
 
-interface TurnState {
-  hasUserInput: boolean
-  lastReply: string
-  usage: Record<string, number> | null
-  toolCalls: number
-  turn: number
-  cwd: string
-  turns: Array<{ user: string; assistant: string }>
-}
-
 export function observeTurns(root: RootLike, deps: TriggerDeps): void {
-  const { observer, settings, log } = deps
+  const { observer, settings, log, getCtx, cards, presence } = deps
   const tracker = new Map<string, TurnState>()
 
   const handlers = createHandlers({
@@ -62,6 +57,9 @@ export function observeTurns(root: RootLike, deps: TriggerDeps): void {
     captureQuestion: deps.captureQuestion,
     tracker,
     seen: deps.seen,
+    getCtx,
+    cards,
+    presence,
   })
   root.on('session/event', handlers.onSessionEvent)
   root.on('agent/error', handlers.onAgentError)
@@ -75,6 +73,9 @@ export interface HandlerContext {
   captureQuestion: (sessionId: string, data: Record<string, unknown>) => Promise<void>
   tracker: Map<string, TurnState>
   seen: SeenTracker
+  getCtx?: () => HostRuntime | null
+  cards?: Store
+  presence?: PresenceLike
 }
 
 export interface Handlers {
@@ -125,9 +126,7 @@ function createSessionEventHandler({
 
       const state = stateOfTracker(tracker, sessionId)
       const data = asRecord(event.data)
-      // 用户回到原会话：记游标，观察者跑完时据此判断「这一轮他看过了」。
-      if (event.type === 'user/message') seen.markUser(sessionId)
-      if (event.type === 'user/message') rememberUserTurn(state, data, cwd)
+      if (event.type === 'user/message') rememberIncoming(state, data, cwd, event.time)
       else if (event.type === 'assistant/message') rememberAssistantTurn(state, data)
       else if (event.type === 'tool/call') {
         state.toolCalls += 1
@@ -136,6 +135,11 @@ function createSessionEventHandler({
             log(`问题卡写入失败：${(err as Error)?.message || String(err)}`),
           )
         }
+      }
+      // 真人回到原会话：只记人类消息。卡片答复是系统替用户发的，不算「他看过」。
+      if (event.type === 'user/message') {
+        const source = provenanceOf(data)
+        if (source.kind === 'human') seen.markUser(sessionId)
       }
     } catch (err) {
       log(`session/event 处理失败：${(err as Error)?.message || String(err)}`)
@@ -158,7 +162,15 @@ function createAgentErrorHandler({ observer }: HandlerContext) {
   }
 }
 
-function createAgentStatusHandler({ observer, log, tracker, seen }: HandlerContext) {
+function createAgentStatusHandler({
+  observer,
+  log,
+  tracker,
+  seen,
+  getCtx,
+  cards,
+  presence,
+}: HandlerContext) {
   return (...args: unknown[]) => {
     try {
       const payload = asRecord(args[0])
@@ -175,68 +187,31 @@ function createAgentStatusHandler({ observer, log, tracker, seen }: HandlerConte
       if (status !== 'idle') return
       const state = tracker.get(sessionId)
       if (!state || !state.hasUserInput || !state.lastReply) return
-      const input = {
-        originSessionId: sessionId,
-        turn: state.turn,
-        replyText: state.lastReply,
-        turns: state.turns.slice(),
-        cwd: state.cwd,
-        // 回合落幕时的游标：之后用户再说的话，说明他回来了、也看过了。
-        seenMark: seen.mark(sessionId),
-      }
+      const snapshot = { ...state, turns: state.turns.slice() }
       // 本轮已消费：清掉，避免重复触发
       tracker.delete(sessionId)
       observer
-        .enqueue(() => observer.run(input))
+        .enqueue(async () => {
+          const durable = await lastHumanMessage(getCtx?.() ?? null, sessionId)
+          return observer.run({
+            originSessionId: sessionId,
+            turn: snapshot.turn,
+            replyText: snapshot.lastReply,
+            turns: snapshot.turns,
+            cwd: snapshot.cwd,
+            // 回合落幕时的游标：之后用户再说的话，说明他回来了、也看过了。
+            seenMark: seen.mark(sessionId),
+            triggerUserMessage: snapshot.lastHumanQuote || durable.text,
+            triggerUserAt: snapshot.lastHumanAt ?? durable.at,
+            triggerSourceKind: snapshot.lastIncomingKind,
+            triggerCardId: snapshot.lastIncomingCardId,
+            ui: presence?.get(sessionId),
+            recentCards: recentCardsOf(cards, sessionId),
+          })
+        })
         .catch((err: unknown) => log(`观察者运行失败：${(err as Error)?.message || String(err)}`))
     } catch (err) {
       log(`agent/status 处理失败：${(err as Error)?.message || String(err)}`)
     }
   }
-}
-
-function stateOfTracker(tracker: Map<string, TurnState>, sessionId: string): TurnState {
-  let state = tracker.get(sessionId)
-  if (!state) {
-    state = {
-      hasUserInput: false,
-      lastReply: '',
-      usage: null,
-      toolCalls: 0,
-      turn: 0,
-      cwd: '',
-      turns: [],
-    }
-    tracker.set(sessionId, state)
-    // 简单封顶，避免长跑宿主里无限长
-    if (tracker.size > 500) {
-      const oldest = tracker.keys().next().value
-      if (oldest !== undefined) tracker.delete(oldest)
-    }
-  }
-  return state
-}
-
-function rememberUserTurn(state: TurnState, data: Record<string, unknown>, cwd: string): void {
-  state.hasUserInput = true
-  state.lastReply = ''
-  state.usage = null
-  state.toolCalls = 0
-  // 观察者需要「最近三轮的用户输入 + 模型最终输出」，不是只有最后一句。
-  state.turns.push({ user: textOf(data), assistant: '' })
-  if (state.turns.length > 3) state.turns.shift()
-  if (cwd) state.cwd = cwd
-}
-
-function rememberAssistantTurn(state: TurnState, data: Record<string, unknown>): void {
-  const text = messageText(data.message)
-  if (text) {
-    state.lastReply = text
-    const latest = state.turns[state.turns.length - 1]
-    if (latest) latest.assistant = text
-  }
-  const usage = asRecord(data.usage)
-  if (Object.keys(usage).length) state.usage = usage as Record<string, number>
-  const turn = asNumber(data.turn)
-  if (turn !== null) state.turn = turn
 }

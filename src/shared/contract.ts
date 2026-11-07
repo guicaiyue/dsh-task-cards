@@ -13,6 +13,9 @@ export const CARD_SOURCES = ['human', 'agent'] as const
 export const CARD_INTERACTIONS = ['reply', 'question'] as const
 export const CARD_ACTION_TYPES = ['prompt', 'retry'] as const
 export const ANSWER_VIAS = ['card', 'chat'] as const
+export const ORDER_SOURCES = ['human', 'card-answer', 'system'] as const
+export const ASK_KINDS = ['judgment', 'permission', 'clarification'] as const
+export const EFFECTS = ['read', 'write-code', 'destructive', 'external', 'spend'] as const
 
 /** 决策代理人对一张卡给的结论：照办 / 不该做 / 换个做法 / 现在别决。 */
 export const ADVICE_VERDICTS = ['approve', 'reject', 'modify', 'wait'] as const
@@ -28,6 +31,9 @@ export type CardSource = (typeof CARD_SOURCES)[number]
 export type CardInteraction = (typeof CARD_INTERACTIONS)[number]
 export type CardActionType = (typeof CARD_ACTION_TYPES)[number]
 export type AnswerVia = (typeof ANSWER_VIAS)[number]
+export type OrderSource = (typeof ORDER_SOURCES)[number]
+export type AskKind = (typeof ASK_KINDS)[number]
+export type Effect = (typeof EFFECTS)[number]
 
 /** 自动动作：到点后在原会话里补一句话（type 目前只有 prompt/retry 两种写法，行为相同）。 */
 export const CardActionSchema = z.object({
@@ -61,6 +67,17 @@ export const CardOriginSchema = z.object({
   observerSessionId: z.string().optional(),
   /** 观察者为什么判成这个 kind（一句话，给决策代理人当依据）。 */
   reason: z.string().default(''),
+  /** 触发这张卡的最近一条真人原话（脱敏、截断）。 */
+  userQuote: z.string().optional(),
+  userQuoteAt: z.number().optional(),
+  /** 触发来源：真人 / 任务卡系统代发 / 其它系统注入。 */
+  sourceKind: z.enum(ORDER_SOURCES).optional(),
+  /** 系统代发时来自哪张卡。 */
+  sourceCardId: z.string().optional(),
+  /** 触发时面板打开的卡（用于解析「这张卡」）。 */
+  uiCardId: z.string().optional(),
+  /** 同会话最近几张卡，供澄清解析。 */
+  relatedCardIds: z.array(z.string()).optional(),
 })
 export type CardOrigin = z.infer<typeof CardOriginSchema>
 
@@ -103,6 +120,22 @@ export const AdviceSchema = z.object({
   autoApply: z.boolean().default(false),
   /** 它判定的车道；与卡的 kind 不同时说明原分类被纠正。 */
   lane: z.enum(CARD_KINDS).default('decision'),
+  /** 请求类型：判断 / 许可 / 澄清。 */
+  ask: z.enum(ASK_KINDS).optional(),
+  /** 这句话对原会话的影响等级；只有 read 才允许自动执行。 */
+  effect: z.enum(EFFECTS).optional(),
+  /** 执行这句话需要的能力，必须都在能力清单里。 */
+  requires: z.array(z.string()).optional(),
+  /** 许可卡：将执行的具体动作/命令。 */
+  action: z.string().optional(),
+  /** 许可卡：文件/路径/范围。 */
+  scope: z.string().optional(),
+  /** 许可卡：是否可撤回。 */
+  reversible: z.boolean().optional(),
+  /** 澄清卡：候选值。 */
+  candidates: z.array(z.string()).optional(),
+  /** 自动执行被拦下的原因；为空表示没被拦。 */
+  blockedReasons: z.array(z.string()).optional(),
   /** 车道纠正是否已自动落盘（只允许向 info 方向纠正）。 */
   applied: z.boolean().default(false),
   at: z.number(),
@@ -143,6 +176,8 @@ export const CardSchema = z.object({
   source: z.enum(CARD_SOURCES).default('human'),
   interaction: z.enum(CARD_INTERACTIONS).default('reply'),
   question: QuestionSchema.nullable().default(null),
+  /** 决策卡的请求类型；非决策卡无意义。 */
+  ask: z.enum(ASK_KINDS).default('judgment'),
   origin: CardOriginSchema.nullable().default(null),
   /** 决策 agent 出的票拟；没跑过或没结论时为 null。 */
   advice: AdviceSchema.nullable().default(null),
@@ -171,6 +206,14 @@ export const CardDraftSchema = z.object({
   action: CardActionSchema.nullable().default(null),
   /** 分类凭据：一句话说明为什么是这个 kind。 */
   reason: z.string().default(''),
+  /** 决策卡的请求类型；观察者可以不给，默认判断。 */
+  ask: z.enum(ASK_KINDS).optional(),
+  /** 许可卡建议的动作范围（写进 detail 的补充）。 */
+  scope: z.string().optional(),
+  /** 许可卡建议的 effect。 */
+  effect: z.enum(EFFECTS).optional(),
+  /** 澄清卡的候选值。 */
+  candidates: z.array(z.string()).optional(),
 })
 export type CardDraft = z.infer<typeof CardDraftSchema>
 

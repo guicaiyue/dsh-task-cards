@@ -108,3 +108,44 @@ describe('触发端记录的 seenMark', () => {
     expect(seen.seenSince('s-1', mark as number)).toBe(true)
   })
 })
+
+describe('来源过滤：系统注入不占用户轮次', () => {
+  const timeContext = {
+    type: 'user/message',
+    data: {
+      source: { kind: 'time-context' },
+      content: [{ type: 'text', text: 'Time sampled while preparing turn 4' }],
+    },
+  }
+  const cardAnswer = {
+    type: 'user/message',
+    data: {
+      source: { kind: 'user', rpcId: 'card-answer-mw4s44xw' },
+      content: [{ type: 'text', text: '〔任务卡答复 c-1「要不要再跑一次」〕\n跑一次' }],
+    },
+  }
+
+  it('time-context 不入轮次，也不把用户标成「已回来」', async () => {
+    const { handlers, seen, captured } = makeHandlers()
+    handlers.onSessionEvent(session, timeContext)
+    expect(seen.mark('s-1')).toBe(0)
+    handlers.onSessionEvent(session, replyEvent)
+    handlers.onAgentStatus({ agent: { id: 's-1' }, status: 'idle' })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    // 只有心跳、没有真人输入：不触发观察者
+    expect(captured).toHaveLength(0)
+  })
+
+  it('card-answer 触发观察者，但标记为系统代发且不标「已回来」', async () => {
+    const { handlers, seen, captured } = makeHandlers()
+    handlers.onSessionEvent(session, cardAnswer)
+    expect(seen.mark('s-1')).toBe(0)
+    handlers.onSessionEvent(session, replyEvent)
+    handlers.onAgentStatus({ agent: { id: 's-1' }, status: 'idle' })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.triggerSourceKind).toBe('card-answer')
+    expect(captured[0]?.triggerCardId).toBe('c-1')
+    expect(captured[0]?.turns?.[0]?.provenance).toBe('card-answer')
+  })
+})

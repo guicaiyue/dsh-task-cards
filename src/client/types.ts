@@ -63,6 +63,8 @@ export type CardActionName =
   | 'adopt'
   /** 决策卡批红：把话推回原会话并把卡标结束（pushed/reason 由宿主回）。 */
   | 'approve'
+  /** 许可卡拒绝：把「不允许」推回原会话并把卡标结束。 */
+  | 'deny'
   /** 这个决定后来返工了（option 是返工原因，可空）。 */
   | 'mark-reworked'
 
