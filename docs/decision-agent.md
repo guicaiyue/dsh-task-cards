@@ -146,8 +146,3 @@ options:
 
 它做对的四件事：① 第一项是最小验证一步；② 试错期判定生效，长期收益如实写「0 步」而不是编一个「更清晰」；③ 没有判例就说没有，把握不标 high；④ 三个方案的长期收益全部按「少走几步」计价。
 
-![票拟在卡片行](panel-v0.2.0-advice-list.png)
-
-![详情里的方案对照](panel-v0.2.0-advice-detail.png)
-
-![设置页的决策代理人](panel-v0.2.0-decision-settings.png)
