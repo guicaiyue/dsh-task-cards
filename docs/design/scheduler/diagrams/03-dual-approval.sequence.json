@@ -1,0 +1,295 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "routine 与 major 的一条闭环",
+    "subtitle": "观察者建卡 → 秘书默认终审 → 执行系统派单 → 验证器判定 · 观察者不验收，秘书不调执行",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/scheduler-design-20261107-114941/03-dual-approval.sequence.html",
+    "legend": {
+      "entries": {
+        "default": {
+          "label": "普通消息"
+        },
+        "emphasis": {
+          "label": "主路径请求"
+        },
+        "security": {
+          "label": "安全 / 升级"
+        },
+        "dashed": {
+          "label": "异步 / 辅助"
+        },
+        "return": {
+          "label": "返回"
+        }
+      }
+    },
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "用户",
+      "sublabel": "重大 / 通知 / 审计",
+      "icon": "person"
+    },
+    {
+      "id": "observer",
+      "type": "backend",
+      "label": "观察者",
+      "sublabel": "建卡 · 供证据",
+      "icon": "person"
+    },
+    {
+      "id": "decider",
+      "type": "backend",
+      "label": "决策者 / 秘书",
+      "sublabel": "默认终审",
+      "icon": "briefcase"
+    },
+    {
+      "id": "sched",
+      "type": "messagebus",
+      "label": "调度者",
+      "sublabel": "system · 路由 / 队列",
+      "icon": "clock"
+    },
+    {
+      "id": "execsys",
+      "type": "cloud",
+      "label": "执行系统",
+      "sublabel": "队列 · 租约 · adapter",
+      "icon": "cloud"
+    },
+    {
+      "id": "verifier",
+      "type": "security",
+      "label": "验证器",
+      "sublabel": "system / decision",
+      "icon": "security"
+    }
+  ],
+  "segments": [
+    {
+      "from": 140,
+      "to": 214,
+      "label": "① 感知：建卡与案卷"
+    },
+    {
+      "from": 222,
+      "to": 320,
+      "label": "② 决策：秘书 delegated"
+    },
+    {
+      "from": 328,
+      "to": 452,
+      "label": "③ 执行：派单与回执"
+    },
+    {
+      "from": 460,
+      "to": 600,
+      "label": "④ 验收与通知 · 升级"
+    }
+  ],
+  "messages": [
+    {
+      "id": "m1",
+      "from": "observer",
+      "to": "sched",
+      "y": 160,
+      "label": "建卡 c1（提案 + acceptance 草稿）",
+      "variant": "default",
+      "note": "观察者只给证据与草稿"
+    },
+    {
+      "id": "m2",
+      "from": "observer",
+      "to": "sched",
+      "y": 188,
+      "label": "建卡 c2（通知类）",
+      "variant": "default"
+    },
+    {
+      "id": "m3",
+      "from": "sched",
+      "to": "decider",
+      "y": 232,
+      "label": "CaseFile c1（卡 + 策略 + 判例 + 能力 + 会话状态）",
+      "variant": "emphasis",
+      "note": "秘书是无工具会话，靠案卷出票"
+    },
+    {
+      "id": "m4",
+      "from": "decider",
+      "to": "sched",
+      "y": 266,
+      "label": "批红 c1（authority=delegated）→ ApprovedPlan",
+      "variant": "return",
+      "note": "approved 时冻结 acceptance"
+    },
+    {
+      "id": "m5",
+      "from": "sched",
+      "to": "execsys",
+      "y": 338,
+      "label": "dispatch p1（system adapter）",
+      "variant": "emphasis",
+      "note": "先写 lease 再派单"
+    },
+    {
+      "id": "m6",
+      "from": "execsys",
+      "to": "sched",
+      "y": 366,
+      "label": "ExecutionResult",
+      "variant": "return"
+    },
+    {
+      "id": "m7",
+      "from": "sched",
+      "to": "verifier",
+      "y": 400,
+      "label": "verify p1（acceptance + result）",
+      "variant": "default"
+    },
+    {
+      "id": "m8",
+      "from": "verifier",
+      "to": "sched",
+      "y": 428,
+      "label": "confirmed",
+      "variant": "return",
+      "note": "system / decision 两级先判，user 只接重大"
+    },
+    {
+      "id": "m9",
+      "from": "sched",
+      "to": "user",
+      "y": 470,
+      "label": "c2 通知（只看，不执行）",
+      "variant": "dashed"
+    },
+    {
+      "id": "m10",
+      "from": "observer",
+      "to": "sched",
+      "y": 498,
+      "label": "建卡 c3（destructive）",
+      "variant": "default"
+    },
+    {
+      "id": "m11",
+      "from": "sched",
+      "to": "user",
+      "y": 526,
+      "label": "escalate c3（major）",
+      "variant": "security"
+    },
+    {
+      "id": "m12",
+      "from": "user",
+      "to": "sched",
+      "y": 554,
+      "label": "批红 / 拒绝 c3",
+      "variant": "return"
+    },
+    {
+      "id": "m13",
+      "from": "sched",
+      "to": "execsys",
+      "y": 582,
+      "label": "p3 等 p1 完成（非抢占）· urgent 只排下一轮队首",
+      "variant": "dashed",
+      "note": "同一会话 WIP=1，不打断当前回合"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "observer",
+      "from": 155,
+      "to": 200,
+      "type": "backend"
+    },
+    {
+      "participant": "sched",
+      "from": 160,
+      "to": 200,
+      "type": "messagebus"
+    },
+    {
+      "participant": "sched",
+      "from": 226,
+      "to": 300,
+      "type": "messagebus"
+    },
+    {
+      "participant": "decider",
+      "from": 232,
+      "to": 272,
+      "type": "backend"
+    },
+    {
+      "participant": "sched",
+      "from": 332,
+      "to": 440,
+      "type": "messagebus"
+    },
+    {
+      "participant": "execsys",
+      "from": 338,
+      "to": 372,
+      "type": "cloud"
+    },
+    {
+      "participant": "verifier",
+      "from": 400,
+      "to": 434,
+      "type": "security"
+    },
+    {
+      "participant": "sched",
+      "from": 464,
+      "to": 592,
+      "type": "messagebus"
+    },
+    {
+      "participant": "user",
+      "from": 470,
+      "to": 558,
+      "type": "external"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "谁必须经过谁",
+      "items": [
+        "观察者只建卡与供证据：不验收、不写 outcome、不调执行系统",
+        "秘书只出批红 → ApprovedPlan：它没有工具，不直接调执行系统",
+        "执行系统只回 ExecutionResult：不决策、不改决定账",
+        "调度者是唯一搬运转发的 system：路由 / 队列 / 租约 / 回执"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "routine 与 major 的分流",
+      "items": [
+        "routine（c1）：调度者把 CaseFile 交给秘书，秘书 delegated 批红即 ApprovedPlan",
+        "通知（c2）：直接给用户看，不进执行队列",
+        "major（c3，destructive）：调度者 escalate 给用户，由用户批红或拒绝"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "验收与非抢占",
+      "items": [
+        "验收分级：system（机器项）、decision（语义项，看证据）、user（重大 / 低置信）",
+        "p3 不抢占 p1：同一会话 WIP=1，urgent 只排下一轮队首",
+        "failed / outcome-unknown 不自动重投，先补偿或升级"
+      ]
+    }
+  ]
+}

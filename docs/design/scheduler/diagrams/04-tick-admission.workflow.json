@@ -1,0 +1,355 @@
+{
+ "schema_version": 2,
+ "diagram_type": "workflow",
+ "meta": {
+  "title": "每 tick：路由 · 决策 · 派单 · 验收",
+  "subtitle": "调度者只做去重 / 路由 / 队列 / 租约 / 回执；秘书默认终审，用户只接重大 / 通知 / 低置信",
+  "locale": "zh-CN",
+  "quality_profile": "showcase",
+  "output": ".archify/scheduler-design-20261107-114941/04-tick-admission.workflow.html",
+  "legend": {
+   "entries": {
+    "backend": {
+     "label": "可推进（绿）"
+    },
+    "security": {
+     "label": "验证 / 门禁（红）"
+    },
+    "messagebus": {
+     "label": "调度 / 队列 / 等待（橙）"
+    },
+    "cloud": {
+     "label": "执行系统（蓝）"
+    },
+    "external": {
+     "label": "唤醒 / 收尾（灰）"
+    }
+   }
+  }
+ },
+ "lanes": [
+  {
+   "id": "intake",
+   "label": "① 唤醒 · 去重 · 路由"
+  },
+  {
+   "id": "decide",
+   "label": "② 决策 · 队列"
+  },
+  {
+   "id": "admit",
+   "label": "③ 准入 · 派单"
+  },
+  {
+   "id": "receive",
+   "label": "④ 回执 · 验收 · 收尾"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "wake",
+   "lane": "intake",
+   "col": 0,
+   "type": "external",
+   "label": "tick / 事件唤醒",
+   "sublabel": "定时或事件",
+   "icon": "clock",
+   "width": 140
+  },
+  {
+   "id": "snapshot",
+   "lane": "intake",
+   "col": 1,
+   "type": "backend",
+   "label": "快照",
+   "sublabel": "读三本账",
+   "icon": "database",
+   "width": 120
+  },
+  {
+   "id": "dedupe",
+   "lane": "intake",
+   "col": 2,
+   "type": "backend",
+   "label": "同源去重",
+   "sublabel": "同源只留一张",
+   "icon": "flag",
+   "width": 130
+  },
+  {
+   "id": "candidates",
+   "lane": "intake",
+   "col": 3,
+   "type": "backend",
+   "label": "候选集",
+   "sublabel": "待决 + 已批未执行",
+   "icon": "flag",
+   "width": 140
+  },
+  {
+   "id": "route",
+   "lane": "intake",
+   "col": 4,
+   "type": "messagebus",
+   "label": "路由",
+   "sublabel": "待决 / 已批分流",
+   "icon": "messagebus",
+   "width": 140
+  },
+  {
+   "id": "wait-user",
+   "lane": "intake",
+   "col": 5,
+   "type": "messagebus",
+   "label": "等用户升级",
+   "sublabel": "重大 / 通知 / 低置信",
+   "width": 140
+  },
+  {
+   "id": "wait-decide",
+   "lane": "decide",
+   "col": 2,
+   "type": "messagebus",
+   "label": "等决策",
+   "sublabel": "CaseFile 已送达",
+   "width": 130
+  },
+  {
+   "id": "decide",
+   "lane": "decide",
+   "col": 4,
+   "type": "backend",
+   "label": "决策",
+   "sublabel": "秘书批红 / 升级用户",
+   "icon": "briefcase",
+   "width": 140
+  },
+  {
+   "id": "queue",
+   "lane": "decide",
+   "col": 5,
+   "type": "messagebus",
+   "label": "ApprovedPlan 队列",
+   "sublabel": "冻结 acceptance 后入队",
+   "icon": "messagebus",
+   "width": 140
+  },
+  {
+   "id": "wait-chain",
+   "lane": "admit",
+   "col": 1,
+   "type": "messagebus",
+   "label": "等前一计划",
+   "sublabel": "非抢占：下一轮",
+   "width": 140
+  },
+  {
+   "id": "wait-session",
+   "lane": "admit",
+   "col": 2,
+   "type": "messagebus",
+   "label": "等会话",
+   "sublabel": "对方在跑 / WIP=1",
+   "width": 130
+  },
+  {
+   "id": "admission",
+   "lane": "admit",
+   "col": 4,
+   "type": "security",
+   "label": "准入",
+   "sublabel": "忙？WIP=1？租约？",
+   "icon": "security",
+   "width": 140
+  },
+  {
+   "id": "dispatch",
+   "lane": "admit",
+   "col": 5,
+   "type": "cloud",
+   "label": "dispatch adapter",
+   "sublabel": "system / session",
+   "icon": "cloud",
+   "width": 140
+  },
+  {
+   "id": "wait-receipt",
+   "lane": "receive",
+   "col": 1,
+   "type": "messagebus",
+   "label": "等回执 / 验收",
+   "sublabel": "结果未回 / 未判",
+   "width": 140
+  },
+  {
+   "id": "capture",
+   "lane": "receive",
+   "col": 3,
+   "type": "cloud",
+   "label": "捕获 ExecutionResult",
+   "sublabel": "回执 / 证据",
+   "icon": "cloud",
+   "width": 140
+  },
+  {
+   "id": "verify",
+   "lane": "receive",
+   "col": 4,
+   "type": "security",
+   "label": "验收",
+   "sublabel": "machine / 语义 / 人工",
+   "icon": "security",
+   "width": 140
+  },
+  {
+   "id": "terminal",
+   "lane": "receive",
+   "col": 5,
+   "type": "external",
+   "label": "close / 补偿 / 升级",
+   "sublabel": "关账 / 补偿 / 升级",
+   "icon": "flag",
+   "width": 140
+  }
+ ],
+ "edges": [
+  {
+   "id": "e1",
+   "from": "wake",
+   "to": "snapshot",
+   "role": "main"
+  },
+  {
+   "id": "e2",
+   "from": "snapshot",
+   "to": "dedupe",
+   "role": "main"
+  },
+  {
+   "id": "e3",
+   "from": "dedupe",
+   "to": "candidates",
+   "role": "main"
+  },
+  {
+   "id": "e4",
+   "from": "candidates",
+   "to": "route",
+   "role": "main"
+  },
+  {
+   "id": "e5",
+   "from": "route",
+   "to": "decide",
+   "role": "main",
+   "label": "routine"
+  },
+  {
+   "id": "e6",
+   "from": "decide",
+   "to": "queue",
+   "role": "main",
+   "label": "批红"
+  },
+  {
+   "id": "e7",
+   "from": "queue",
+   "to": "admission",
+   "role": "main"
+  },
+  {
+   "id": "e8",
+   "from": "admission",
+   "to": "dispatch",
+   "role": "main",
+   "label": "先写 lease"
+  },
+  {
+   "id": "e9",
+   "from": "dispatch",
+   "to": "capture",
+   "role": "main",
+   "label": "ExecutionResult"
+  },
+  {
+   "id": "e10",
+   "from": "capture",
+   "to": "verify",
+   "role": "main",
+   "label": "acceptance"
+  },
+  {
+   "id": "e11",
+   "from": "verify",
+   "to": "terminal",
+   "role": "main"
+  },
+  {
+   "id": "e-wait-user",
+   "from": "route",
+   "to": "wait-user",
+   "role": "branch",
+   "variant": "dashed",
+   "label": "通知类：只看；重大：审批"
+  },
+  {
+   "id": "e-wait-decide",
+   "from": "decide",
+   "to": "wait-decide",
+   "role": "branch",
+   "variant": "dashed",
+   "label": "等票"
+  },
+  {
+   "id": "e-wait-session",
+   "from": "admission",
+   "to": "wait-session",
+   "role": "branch",
+   "variant": "dashed",
+   "label": "会话没放行"
+  },
+  {
+   "id": "e-wait-chain",
+   "from": "admission",
+   "to": "wait-chain",
+   "role": "branch",
+   "variant": "dashed",
+   "label": "WIP=1 非抢占"
+  },
+  {
+   "id": "e-wait-receipt",
+   "from": "dispatch",
+   "to": "wait-receipt",
+   "role": "branch",
+   "variant": "dashed",
+   "label": "未回执"
+  }
+ ],
+ "semanticChecks": {
+  "allowedRoots": [
+   "wake"
+  ],
+  "allowedTerminals": [
+   "terminal",
+   "wait-user",
+   "wait-decide",
+   "wait-session",
+   "wait-chain",
+   "wait-receipt"
+  ],
+  "requiredEdges": [
+   {
+    "from": "route",
+    "to": "wait-user"
+   },
+   {
+    "from": "admission",
+    "to": "wait-chain"
+   },
+   {
+    "from": "dispatch",
+    "to": "wait-receipt"
+   }
+  ]
+ }
+}

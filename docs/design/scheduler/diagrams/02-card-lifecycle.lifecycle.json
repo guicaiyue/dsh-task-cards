@@ -1,0 +1,376 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "一张卡：感知到验收",
+    "subtitle": "① 感知·建卡 acceptance　② 决策·秘书默认终审 / 升级用户　③ 执行·队列租约 adapter　④ 验收·出口并分级",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/scheduler-design-20261107-114941/02-card-lifecycle.lifecycle.html",
+    "legend": {
+      "entries": {
+        "start": {
+          "label": "起点"
+        },
+        "active": {
+          "label": "可推进（青）"
+        },
+        "waiting": {
+          "label": "等待（琥珀）"
+        },
+        "success": {
+          "label": "完成（绿）"
+        },
+        "failure": {
+          "label": "拦截 / 失败（红）"
+        },
+        "neutral": {
+          "label": "已结束（灰）"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "①"
+    },
+    {
+      "id": "decide",
+      "label": "②"
+    },
+    {
+      "id": "exec",
+      "label": "③"
+    },
+    {
+      "id": "verify",
+      "label": "④"
+    }
+  ],
+  "states": [
+    {
+      "id": "created",
+      "type": "start",
+      "label": "created",
+      "sublabel": "观察者建卡",
+      "lane": "main",
+      "col": 0,
+      "tag": "观察者",
+      "icon": "start",
+      "width": 140
+    },
+    {
+      "id": "card_ready",
+      "type": "active",
+      "label": "card_ready",
+      "sublabel": "提案 + acceptance",
+      "lane": "main",
+      "col": 1,
+      "tag": "观察者",
+      "icon": "active",
+      "width": 150
+    },
+    {
+      "id": "pending_secretary",
+      "type": "waiting",
+      "label": "pending_secretary",
+      "sublabel": "等秘书批红（默认终审）",
+      "lane": "decide",
+      "col": 2,
+      "tag": "调度者路由",
+      "icon": "waiting",
+      "width": 160
+    },
+    {
+      "id": "escalated_user",
+      "type": "waiting",
+      "label": "escalated_user",
+      "sublabel": "重大 / 通知 / 低置信",
+      "lane": "decide",
+      "col": 3,
+      "tag": "调度者升级",
+      "icon": "waiting",
+      "width": 156
+    },
+    {
+      "id": "approved",
+      "type": "success",
+      "label": "approved",
+      "sublabel": "批红 → ApprovedPlan",
+      "lane": "decide",
+      "col": 4,
+      "tag": "冻结 acceptance",
+      "icon": "success",
+      "width": 170
+    },
+    {
+      "id": "planned",
+      "type": "active",
+      "label": "planned",
+      "sublabel": "ApprovedPlan 入队",
+      "lane": "exec",
+      "col": 0,
+      "tag": "调度者",
+      "icon": "active",
+      "width": 170
+    },
+    {
+      "id": "waiting",
+      "type": "waiting",
+      "label": "waiting",
+      "sublabel": "等空闲 / WIP=1 / 非抢占",
+      "lane": "exec",
+      "col": 1,
+      "tag": "调度者",
+      "icon": "waiting",
+      "width": 160
+    },
+    {
+      "id": "dispatched",
+      "type": "active",
+      "label": "dispatched",
+      "sublabel": "已派单（adapter）",
+      "lane": "exec",
+      "col": 2,
+      "tag": "不可逆：只能补偿",
+      "icon": "active",
+      "width": 160
+    },
+    {
+      "id": "executed",
+      "type": "active",
+      "label": "executed",
+      "sublabel": "已回 ExecutionResult",
+      "lane": "exec",
+      "col": 3,
+      "tag": "执行系统",
+      "icon": "active",
+      "width": 156
+    },
+    {
+      "id": "verifying",
+      "type": "waiting",
+      "label": "verifying",
+      "sublabel": "分级：system / decision / user",
+      "lane": "verify",
+      "col": 0,
+      "tag": "验证器",
+      "icon": "waiting",
+      "width": 176
+    },
+    {
+      "id": "outcome",
+      "type": "success",
+      "label": "confirmed / failed / unknown",
+      "sublabel": "验收结果（不自动重投）",
+      "lane": "verify",
+      "col": 1,
+      "tag": "验证器",
+      "icon": "success",
+      "width": 186
+    },
+    {
+      "id": "terminal",
+      "type": "neutral",
+      "label": "closed / 补偿 / 升级",
+      "sublabel": "关账 / 补偿 / 升级",
+      "lane": "verify",
+      "col": 2,
+      "tag": "调度者",
+      "icon": "neutral",
+      "width": 150
+    },
+    {
+      "id": "intercept",
+      "type": "failure",
+      "label": "rejected / conflicted / stale",
+      "sublabel": "驳回 / 冲突 / 旧票失效",
+      "lane": "verify",
+      "col": 3,
+      "tag": "决策者 / 用户",
+      "icon": "failure",
+      "width": 180
+    },
+    {
+      "id": "notice",
+      "type": "external",
+      "label": "notice",
+      "sublabel": "通知卡：只看不执行",
+      "lane": "main",
+      "col": 2,
+      "tag": "调度者",
+      "icon": "external",
+      "width": 150
+    }
+  ],
+  "transitions": [
+    {
+      "id": "t-ready",
+      "from": "created",
+      "to": "card_ready",
+      "label": "草拟 acceptance",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t-route",
+      "from": "card_ready",
+      "to": "pending_secretary",
+      "label": "CaseFile 路由",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t-escalate",
+      "from": "pending_secretary",
+      "to": "escalated_user",
+      "label": "升级",
+      "variant": "security"
+    },
+    {
+      "id": "t-delegate",
+      "from": "pending_secretary",
+      "to": "approved",
+      "label": "秘书批红"
+    },
+    {
+      "id": "t-user-sign",
+      "from": "escalated_user",
+      "to": "approved",
+      "label": "用户批红"
+    },
+    {
+      "id": "t-user-reject",
+      "from": "escalated_user",
+      "to": "intercept",
+      "label": "用户拒绝",
+      "variant": "security"
+    },
+    {
+      "id": "t-reject",
+      "from": "pending_secretary",
+      "to": "intercept",
+      "label": "驳回 / 冲突",
+      "variant": "security"
+    },
+    {
+      "id": "t-notice",
+      "from": "card_ready",
+      "to": "notice",
+      "label": "通知类",
+      "variant": "dashed"
+    },
+    {
+      "id": "t-plan",
+      "from": "approved",
+      "to": "planned",
+      "label": "派生 ApprovedPlan",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t-wait",
+      "from": "planned",
+      "to": "waiting",
+      "label": "排队",
+      "variant": "dashed"
+    },
+    {
+      "id": "t-dispatch",
+      "from": "waiting",
+      "to": "dispatched",
+      "label": "先写 lease 再派单",
+      "variant": "security",
+      "labelDy": 57,
+      "labelAt": [
+        432,
+        415
+      ]
+    },
+    {
+      "id": "t-execute",
+      "from": "dispatched",
+      "to": "executed",
+      "label": "ExecutionResult",
+      "labelAt": [
+        560,
+        400
+      ]
+    },
+    {
+      "id": "t-verify",
+      "from": "executed",
+      "to": "verifying",
+      "label": "acceptance + result",
+      "variant": "emphasis",
+      "labelAt": [
+        300,
+        560
+      ]
+    },
+    {
+      "id": "t-outcome",
+      "from": "verifying",
+      "to": "outcome",
+      "label": "Outcome"
+    },
+    {
+      "id": "t-close",
+      "from": "outcome",
+      "to": "terminal",
+      "label": "关账 / 补偿 / 升级",
+      "labelDy": 57
+    },
+    {
+      "id": "t-notice-done",
+      "from": "notice",
+      "to": "terminal",
+      "label": "已读即结束",
+      "variant": "dashed"
+    },
+    {
+      "id": "t-timeout",
+      "from": "dispatched",
+      "to": "outcome",
+      "label": "超时 / 无结果",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "四层怎么读",
+      "items": [
+        "行是四个阶段：① 感知（建卡 + acceptance 草稿）→ ② 决策（秘书默认终审，重大 / 通知 / 低置信升级用户）",
+        "→ ③ 执行（队列 · 租约 · adapter）→ ④ 验收与出口（system / decision / user 分级，通知 / 拦截在此分流）",
+        "每个状态的 tag 是这一步的行动者：观察者 / 调度者 / 秘书 / 用户 / 执行系统 / 验证器",
+        "approved 时冻结 acceptance：后面只能按这份标准验收"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "不可逆与不自动重投",
+      "items": [
+        "waiting → dispatched 之前必须先写 lease（红边）",
+        "dispatched 之后只能补偿，不能撤回",
+        "failed / outcome-unknown 不自动重投：先补偿或升级用户"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "决策默认与升级",
+      "items": [
+        "秘书默认终审，写批红（authority=delegated）",
+        "重大 / 通知 / 低置信才升级用户（authority=user）",
+        "通知卡走 notice：用户只看，不进执行队列"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "验收分级",
+      "items": [
+        "system 判机器项，decision 判语义项（看证据），user 接重大 / 低置信",
+        "观察者只提供证据，不能写 outcome",
+        "冲突 / 旧票失效走拦截出口，不进入执行"
+      ]
+    }
+  ]
+}

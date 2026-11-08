@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "四层闭环与三本账",
+    "subtitle": "观察者 → 决策者 / 秘书 → 执行系统 → 验收 · 调度者是 system，不写票也不执行",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/scheduler-design-20261107-114941/01-roles-ledgers.architecture.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "可推进（绿）"
+        },
+        "security": {
+          "label": "验证 / 门禁（红）"
+        },
+        "database": {
+          "label": "账本（紫）"
+        },
+        "messagebus": {
+          "label": "调度 / 队列（橙）"
+        },
+        "external": {
+          "label": "用户 / 通知（灰）"
+        },
+        "cloud": {
+          "label": "执行系统（蓝）"
+        },
+        "frontend": {
+          "label": "面板（青）"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "observer",
+      "type": "backend",
+      "label": "观察者",
+      "sublabel": "建卡 + 草拟 acceptance",
+      "tag": "agent · 不验收 · 不执行",
+      "icon": "person",
+      "pos": [
+        40,
+        60
+      ],
+      "size": [
+        186,
+        70
+      ]
+    },
+    {
+      "id": "decider",
+      "type": "backend",
+      "label": "决策者 / 秘书",
+      "sublabel": "默认终审 · 写批红",
+      "tag": "agent · 不执行",
+      "icon": "briefcase",
+      "pos": [
+        40,
+        190
+      ],
+      "size": [
+        186,
+        70
+      ]
+    },
+    {
+      "id": "user",
+      "type": "external",
+      "label": "用户",
+      "sublabel": "授权人 · 重大 / 通知 / 审计",
+      "tag": "不是默认审批人",
+      "icon": "person",
+      "pos": [
+        40,
+        320
+      ],
+      "size": [
+        186,
+        70
+      ]
+    },
+    {
+      "id": "scheduler",
+      "type": "messagebus",
+      "label": "调度者",
+      "sublabel": "路由 · 队列 · 租约 · 回执 · 升级",
+      "tag": "system · 不写票 · 不执行",
+      "icon": "clock",
+      "pos": [
+        330,
+        420
+      ],
+      "size": [
+        240,
+        150
+      ]
+    },
+    {
+      "id": "verdicts",
+      "type": "database",
+      "label": "决定账",
+      "sublabel": "verdict · authority",
+      "tag": "delegated / user",
+      "icon": "database",
+      "pos": [
+        640,
+        60
+      ],
+      "size": [
+        230,
+        330
+      ]
+    },
+    {
+      "id": "delivery",
+      "type": "database",
+      "label": "投递账",
+      "sublabel": "plan · lease · attempt",
+      "tag": "先落 lease",
+      "icon": "clock",
+      "pos": [
+        640,
+        400
+      ],
+      "size": [
+        230,
+        70
+      ]
+    },
+    {
+      "id": "exec",
+      "type": "database",
+      "label": "执行账",
+      "sublabel": "result · outcome · evidence",
+      "tag": "回执与证据",
+      "icon": "flag",
+      "pos": [
+        640,
+        540
+      ],
+      "size": [
+        230,
+        80
+      ]
+    },
+    {
+      "id": "execsys",
+      "type": "cloud",
+      "label": "执行系统",
+      "sublabel": "队列 + 租约 + 适配器",
+      "tag": "system / session adapter",
+      "icon": "cloud",
+      "pos": [
+        940,
+        435
+      ],
+      "size": [
+        190,
+        120
+      ]
+    },
+    {
+      "id": "verifier",
+      "type": "security",
+      "label": "验证器",
+      "sublabel": "system / decision / user",
+      "tag": "只判 result + evidence",
+      "icon": "security",
+      "pos": [
+        940,
+        700
+      ],
+      "size": [
+        190,
+        120
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "禁令①：观察者不验收（只供证据）",
+      "wraps": [
+        "observer"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "禁令②：决策者不执行",
+      "wraps": [
+        "decider"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "禁令③：执行系统不决策",
+      "wraps": [
+        "execsys"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "禁令④：调度者不写票 · 同一会话 WIP=1 / 非抢占",
+      "wraps": [
+        "scheduler"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "observe-card",
+      "from": "observer",
+      "to": "verdicts",
+      "label": "建卡（含 acceptance 草稿）",
+      "variant": "default"
+    },
+    {
+      "id": "decider-sign",
+      "from": "decider",
+      "to": "verdicts",
+      "label": "写批红（authority=delegated）",
+      "variant": "emphasis"
+    },
+    {
+      "id": "user-sign",
+      "from": "user",
+      "to": "verdicts",
+      "label": "升级批红（authority=user）",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sched-read",
+      "from": "scheduler",
+      "to": "verdicts",
+      "label": "只读 + 派生状态",
+      "variant": "dashed"
+    },
+    {
+      "id": "sched-plan",
+      "from": "scheduler",
+      "to": "delivery",
+      "label": "写 plan / lease",
+      "variant": "default",
+      "labelAt": [
+        548,
+        386
+      ]
+    },
+    {
+      "id": "sched-dispatch",
+      "from": "scheduler",
+      "to": "execsys",
+      "label": "dispatch ApprovedPlan",
+      "variant": "emphasis"
+    },
+    {
+      "id": "execsys-result",
+      "from": "execsys",
+      "to": "exec",
+      "label": "ExecutionResult",
+      "variant": "default"
+    },
+    {
+      "id": "sched-verify",
+      "from": "scheduler",
+      "to": "verifier",
+      "label": "acceptance + result",
+      "variant": "default"
+    },
+    {
+      "id": "verifier-outcome",
+      "from": "verifier",
+      "to": "exec",
+      "label": "Outcome",
+      "variant": "emphasis"
+    },
+    {
+      "id": "observer-evidence",
+      "from": "observer",
+      "to": "scheduler",
+      "label": "证据 / 观察",
+      "variant": "dashed"
+    },
+    {
+      "id": "sched-escalate",
+      "from": "scheduler",
+      "to": "user",
+      "label": "升级（重大 / 通知）",
+      "variant": "dashed"
+    },
+    {
+      "id": "sched-casefile",
+      "from": "scheduler",
+      "to": "decider",
+      "label": "CaseFile：卡 + 策略 + 判例 + 能力 + 会话状态",
+      "variant": "emphasis",
+      "labelAt": [
+        430,
+        300
+      ]
+    },
+    {
+      "id": "execsys-return",
+      "from": "execsys",
+      "to": "scheduler",
+      "label": "回传 ExecutionResult",
+      "variant": "dashed",
+      "labelAt": [
+        880,
+        672
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "四层闭环",
+      "items": [
+        "感知：观察者建卡 + 草拟 acceptance（它不验收）",
+        "决策：决策者/秘书默认终审写批红 → ApprovedPlan；重大 / 通知 / 低置信升级用户",
+        "执行：执行系统按 ApprovedPlan 排队、领租约、过 adapter，只回 ExecutionResult",
+        "验收：验证器分级判定 → Outcome，写回执行账"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "三本账分工",
+      "items": [
+        "决定账：verdict + authority（delegated / user），approved 时冻结 acceptance",
+        "投递账：plan / lease / attempt，派单前先落租约",
+        "执行账：result / outcome / evidence，回执与证据同源"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "五条禁令",
+      "items": [
+        "观察者不验收、不执行；决策者不执行、不碰执行账",
+        "执行系统不决策；调度者不写票、不执行",
+        "用户不是默认审批人，只接重大 / 通知 / 例外",
+        "同一会话 WIP=1 且非抢占：urgent 只排下一轮队首"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "验收分级",
+      "items": [
+        "system：机器项（构建、测试、契约）",
+        "decision：语义项，基于证据判（观察者只给证据）",
+        "user：重大 / 低置信才介入",
+        "failed / outcome-unknown 不自动重投，先补偿或升级"
+      ]
+    }
+  ]
+}
