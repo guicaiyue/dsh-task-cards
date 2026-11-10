@@ -49,7 +49,7 @@
     "test:watch": "vitest",
     "test:abi": "node scripts/check-client-bundle.mjs",
     "budget": "node scripts/check-budgets.mjs",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:abi && pnpm budget",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:abi && node scripts/check-kernel-only-writes.mjs && node scripts/check-single-composition-root.mjs && node scripts/check-cross-module-imports.mjs && pnpm budget",
     "changeset": "changeset",
     "release": "node scripts/release.mjs",
     "prepare": "pnpm build"

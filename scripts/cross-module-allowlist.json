@@ -1,0 +1,12 @@
+[
+  "src/host/decision/autoapply.ts -> question",
+  "src/host/decision/input.ts -> observer",
+  "src/host/decision/parse.ts -> observer",
+  "src/host/decision/preset.ts -> observer",
+  "src/host/decision/preview.ts -> observer",
+  "src/host/decision/runner.ts -> observer",
+  "src/host/decision/session.ts -> observer",
+  "src/host/observer/prompt.ts -> decision",
+  "src/host/observer/trigger.ts -> decision",
+  "src/host/question/record.ts -> observer"
+]

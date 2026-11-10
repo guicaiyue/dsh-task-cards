@@ -40,8 +40,16 @@
                   "node:fs": "客户端代码不能碰文件系统",
                   "node:path": "客户端代码不能碰路径",
                   "node:os": "客户端代码不能碰 OS",
-                  "../host": "客户端不能直接 import 宿主模块"
-                }
+                  "../host": "客户端不能直接 import 宿主模块",
+                  "zod": "客户端不能值导入 zod（只允许 import type）",
+                  "../../../src/host": "客户端不能跨层 import 宿主"
+                },
+                "patterns": [
+                  {
+                    "group": ["**/host/**"],
+                    "message": "客户端不能 import 宿主（阶段 A 分组边界）"
+                  }
+                ]
               }
             }
           }
@@ -58,8 +66,62 @@
               "options": {
                 "paths": {
                   "react": "宿主代码不能 import react",
-                  "react-dom": "宿主代码不能 import react-dom"
-                }
+                  "react-dom": "宿主代码不能 import react-dom",
+                  "../../client": "宿主不能 import 客户端",
+                  "../client": "宿主不能 import 客户端"
+                },
+                "patterns": [
+                  {
+                    "group": ["**/client/**"],
+                    "message": "宿主不能 import 客户端（阶段 A 分组边界）"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/shared/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "react": "shared 不能 import react",
+                  "../../host": "shared 不能 import host",
+                  "../host": "shared 不能 import host",
+                  "../client": "shared 不能 import client"
+                },
+                "patterns": [
+                  {
+                    "group": ["**/host/**", "**/client/**"],
+                    "message": "shared 不能 import 宿主/客户端（阶段 A 分组边界）"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/host/decision/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/scheduler/**"],
+                    "message": "决策层不能直接 import 调度/提问内部模块（阶段 A 边界：decision 通过 CaseFile 拿输入）"
+                  }
+                ]
               }
             }
           }

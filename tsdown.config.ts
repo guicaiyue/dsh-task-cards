@@ -32,6 +32,8 @@ export default defineConfig([
     // 客户端：浏览器里由宿主的模块加载器执行 factory(require)
     entry: { client: 'src/client/index.tsx' },
     format: ['cjs'],
+    // 客户端走压缩：预算按字节算，未压缩时一半体积是空白与长标识符。
+    minify: true,
     // neutral + browser：不要 Node 内置，也不要为 Node 生成 CJS 目标
     platform: 'neutral',
     inputOptions: { platform: 'browser', external: ['react', 'react/jsx-runtime', 'react-dom'] },
