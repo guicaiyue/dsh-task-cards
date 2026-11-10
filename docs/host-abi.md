@@ -24,6 +24,38 @@
 | `tools.schemas()` / `tools.restrict({deny})` | 读出全局工具并摘掉 | 观察者会话不带工具定义 | 观察者可能看到工具 |
 | `webServer.register(route)` | → `dispose()` | 9 个面板后端路由 | 面板无后端 |
 | `connection.requestRejection(req)` | → `0`/`403` | 用宿主自己的信任栅栏 | 退回「只认回环/白名单」 |
+| `tools.guard(fn)` | `ctx.tools.guard(exec => string \| undefined)` → disposer | 回合内危险动作的**单调**前置拦截：同步判定，任何 guard 返回原因即 deny，后续 listener 翻不回「允许」 | 插件照常启动，但没有前置闸门：命中危险动作时只建卡 + 打日志，并在卡 detail 写「本宿主不支持前置拦截，请人工确认」（**不假装拦住了**） |
+| `tools/pre-execute` waterfall | `ctx.on('tools/pre-execute', (exec, next) => …, { prepend: true })` → `{kind:'deny', reason}` | `tools.guard` 拿不到时的退路：可 async，能先建卡再 deny | 同上（退到「只建卡 + 告知」） |
+
+> **工具门禁能力与实测边界（2026-11-10，`dsh` / `dsh-tools` 0.2.1-rc.5）**
+>
+> **接口存在（已核对源码）**：`tools.guard(fn)` 与 `tools/pre-execute` waterfall 都在；
+> `ToolRuntime` 的 service 名是 `tools`（`super(ctx,"tools")`），pre-execute 派发点是
+> `ctx.waterfall(carrier, "tools/pre-execute", exec, () => ({kind:"allow"}))`，`guard` 在
+> waterfall 之后由 `guardReason()` 叠加。宿主自带插件 `dsh-experimental-auto-review`
+> 用 `ctx.effect(function*(){ yield ctx.on('tools/pre-execute', …) })` 注册。
+>
+> **实测（真机会话，2026-11-10）：本插件注册的 listener 一次也没收到回调**。
+> 注册日志与启动自检都正常，但在任意会话执行危险命令（`rm -rf /tmp/…`）时：
+> `闸门回调`（guard 与 pre-execute 两个计数）恒为 0，命令照常执行。已尝试的两种挂法都无效：
+> 插件根 ctx 的 `on('tools/pre-execute', handler, {prepend:true, global:true})`、
+> 以及按会话把同一 handler 挂到 `agent.ctx`（从 `ctx.agents.get(sessionId).ctx` 取）。
+> 结论：**工具事件按 agent 作用域派发，插件的根 ctx 不在其作用域链里；`global:true`
+> 与 `agent.ctx` 两条路本文实测都收不到**（host 侧接线细节未在本仓库内验证）。
+>
+> **覆盖范围（真机实测补充）**：闸门只对**插件观察到、并成功把 listener 挂到 agent 作用域**的会话生效（`session/event` 第一次出现时挂载）。插件启动前就存在的会话、或从未产生事件的会话不在覆盖范围；**lead 会话实测「完全不拦」就属于这一类**（那是别的 workspace 的会话，没有被观察/挂载），不是全局失效。面板「策略 → 回合内闸门覆盖范围」也写了同一条，避免误解为全局生效。
+>
+> **实测已知事实（2026-11-10，真机多轮验证，升级 DSH 时按这几条核对）**
+> 1. **同一 tool call 会被 `tools/pre-execute` 回调多次**（实测同一次执行 4 次，`callId` 相同）；故判定必须幂等：本插件用「每执行只判一次」缓存（`gate/judged.ts`，exec 对象 WeakMap + callId 60s）+ 券宽限期（核销后 5s 内重复判定仍视为允许），两者共同保证同一次调用只建 1 张卡、只消费 1 次券。
+> 2. **waterfall 与 guard 拿到的 exec 不同源**（不是同一个对象，甚至 callId 也可能不同）——所以**不能**靠对象同一性去重，必须用语义 key + 宽限期。
+> 3. 宿主顺序：`tools/pre-execute` waterfall 先跑 → allow 后再跑 `guard`；两条路径都判会重复消费券（这是「批准后仍拦」的最终根因）。
+> 4. 工具事件按 agent 作用域派发；插件根 ctx 收不到时，用 `agent.ctx` 挂载 + `global:true` 才会回调（实测已生效）。
+>
+> **本插件的处理（诚实降级）**：不假装拦住了。首次通过 `session/event` 的 `tool/call`
+> 观察到工具调用、而两个回调计数仍为 0 时，自动切到 `observe-only`：只建卡（卡上写
+> 「本宿主未提供可用的前置拦截，请人工确认」）+ 打日志，并把模式写进日志
+> （`闸门降级：本宿主未提供可用的前置拦截（…）`）。升级 DSH 后重新核对这几条，
+> 若 listener 开始回调，`guard/pre-execute` 路径会自动恢复拦截（代码保留）。
 
 ## 客户端侧（`ClientContext`）
 

@@ -86,9 +86,15 @@ Panel（React）── fetch ──► routes/*.ts ──► Store / SettingsSto
 | 客户端不碰 Node / 宿主代码、宿主不碰 React | Biome `noRestrictedImports` + `tests/shared/boundaries.test.ts` |
 | 契约只有一份真源 | zod schema + `tests/shared/contract.test.ts` |
 | 单文件 ≤300 行、接线文件 ≤150 行、函数 ≤60 行 | `scripts/check-budgets.mjs`（`pnpm budget`） |
-| 客户端产物形状与体积 | `scripts/check-client-bundle.mjs`（`pnpm test:abi`，150 KB 预算） |
+| 客户端产物形状与体积 | `scripts/check-client-bundle.mjs`（`pnpm test:abi`，150 KB 预算；样式表经 `GET /css` 由宿主发，不占客户端体积） |
 | 提交信息与推送质量 | lefthook + commitlint + CI |
 
 ## 为什么不拆成多个包
 
 只有一个插件、一个消费方（宿主）。多包会带来 workspace 解析、版本对齐、发布顺序的问题，换不来任何隔离收益；用目录边界 + lint 规则已经够。
+
+
+## 分层组合根与模块边界（阶段 A）
+
+- **分层组合根（三层，禁止第四处）**：`index.ts`（生命周期）→ `wire.ts`（模块装配、`root.inject`）→ `kernel/assemble.ts`（Scheduler / Verifier / Receipt / Todo / Evidence / Plans / ApprovalPolicy 构造）。`scripts/check-single-composition-root.mjs` 同时检查 `root.inject/ctx.inject` 与 `new <内核对象>(`，并区分类型：内核对象只允许 assemble/wire，决策/观察者对象只允许 wire（在 assemble 里 `new Decision(...)` 会 exit 1）。
+- **模块边界棘轮**：`scripts/check-cross-module-imports.mjs` + `scripts/cross-module-allowlist.json`。设计禁止方向（decision→scheduler/observer/question、question→observer、observer→decision）现存 10 处冻结在 allowlist；**新增违规 exit 1，allowlist 过期（代码已清理）也 exit 1**，只减不增，接进 `pnpm verify`。

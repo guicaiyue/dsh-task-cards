@@ -4,17 +4,30 @@
 
 ## 一分钟上手
 
+**环境**：生产 dsh（13080）已禁用本插件、也不再监听本仓库；开发/测试/验证都在
+`/vol1/1000/docker/dsh-dev` 的 `dsh-dev` 容器里做（容器以可写方式直挂本仓库，容器内路径
+`/workspace/nas-plugins/dsh-task-cards`，端口 3080）。
+
 ```bash
+# 在 dsh-dev 容器里（docker compose exec dsh bash）
 pnpm install      # 首次；prepare 会先 build
-pnpm dev          # 改 src/** 自动重建 lib/，宿主 500 ms 内热重载客户端
+pnpm dev          # 改 src/** 自动重建 lib/，容器里的 dsh 500 ms 内热重载客户端
 pnpm verify       # lint → typecheck → test → build → ABI → 代码预算（推之前必须绿）
 ```
 
-改宿主、改客户端都**不用重启 dsh**：`pnpm dev`（或 `pnpm build`）落盘产物后 1–2 秒内生效。
-- 客户端：`dsh-client-hmr` 每 500 ms 轮询 bundle，重建后浏览器自动重载模块。
-- 宿主：`dsh-hmr` 监听本仓库所在目录（本机 profile 的 `root` 是 `/vol1/1000/开发/NAS/dsh-plugins`），
-  产物变化即重载插件、重跑 `apply`，卸载时走 `effect` 的 disposer。
-只有装/升级依赖、改环境变量这类「不在 HMR 队列里」的变更才需要重启，见 [docs/commands.md](docs/commands.md#热重载)。
+从宿主驱动（AI 跑在生产的 dsh 里时）：
+
+```bash
+cd /vol1/1000/docker/dsh-dev
+docker compose exec dsh bash -lc 'cd /workspace/nas-plugins/dsh-task-cards && pnpm build && pnpm test'
+./dev-url.sh --browser      # 打开 http://192.168.1.4:3080 验收
+```
+
+改宿主、改客户端都**不用重启 dsh**：容器里 `dev.patch.yml` 打开了 `dsh-hmr`，`root` 是
+`/workspace/nas-plugins`，产物变化即重载插件、重跑 `apply`，卸载时走 `effect` 的 disposer；
+客户端由 `dsh-client-hmr` 每 500 ms 轮询 bundle，重建后浏览器自动重载模块。
+只有装/升级依赖、改环境变量、改 `dev.patch.yml` 这类「不在 HMR 队列里」的变更才需要
+`docker compose restart dsh`，见 [docs/commands.md](docs/commands.md#热重载)。
 
 ## 目录约定（写之前先想清楚放哪）
 
@@ -79,6 +92,7 @@ pnpm verify       # lint → typecheck → test → build → ABI → 代码预�
 | tsdown 产物扩展名 | `package.json` 是 `type: module`，靠 `outExtensions` 出 `.js`，配置别动 |
 | 热重载后 preset 注册报 duplicate | `observer/preset.ts` 已处理，别重复造 |
 | 在 `lib/` 里改代码 | 会被 `pnpm build` 覆盖；改 `src/` |
+| 新增迁移/归一化函数只测函数本身 | **必须补一条走 `bootKernel()` 的接线测试**：函数写了、单测绿、boot 没调 = 生产数据永远不纠正（已踩两次：`migrateDecisions` 被门槛挡住、`normalize()` 无调用点）。boot 结束还会打一行 `启动自检：cards=… decision=… plans=… approvalTiers=… traceId补=…`，没接线会直接显示 `plans=0`/`auto:0` |
 
 ## 文档地图
 

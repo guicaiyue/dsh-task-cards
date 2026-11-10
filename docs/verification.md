@@ -98,3 +98,11 @@ bsk 驱动的 Chromium 不在宿主命名空间，它的 `127.0.0.1` 不是 dsh�
 2. 之后用 `curl -b /tmp/dsh.jar` 直接打 API（`/cards`、`/decisions`、`/action`）。
 3. **重启 dsh 后 token 会换**：取 token 的 journal 时间窗要落在重启之后，否则拿到空串 → 全部 401。
 4. 页面里的 `.dtc-*` 元素点击有时被扩展浮层挡住；用 `evaluate` 里 `element.click()` 更稳。
+
+
+## 阶段 D 新增检查项
+
+- 无 acceptance 的卡：批准后 detail 出现 `⚠ 无验收方式，需人工补充`，且不会被机器 confirmed；
+- 面板分道：等秘书批 / 等升级 / 执行中 / 验收中 / 已结束 + 通知折叠；
+- 详情「决定票」可展开（authority / policyVersion / confidence / rationale / evidenceRefs）；
+- 六项 KPI 文本行：`六项：delegated … / override … / 升级 … / wait … / 卡 … 张/回合 / 干预 … 次/回合（回合数 N，来自真实 origin.turn）`。
