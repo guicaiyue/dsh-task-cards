@@ -1,12 +1,16 @@
-// 面板主组件：只做渲染，状态与副作用都在 usePanelState 里。
+// 面板主组件：七屏选一。只做渲染，状态与副作用都在 usePanelState 里。
 
 import { type PanelState, usePanelState } from '../hooks/usePanelState'
-import type { Translate } from '../types'
-import { CardsTab } from './CardsTab'
-import { DetailModal } from './DetailModal'
+import type { Card, Translate } from '../types'
+import { DetailTab } from './DetailTab'
+import { FailureTab } from './FailureTab'
 import { NoticeToast } from './NoticeToast'
-import { KpiRow, PanelHeader, TabBar } from './PanelHeader'
+import { PanelHeader } from './PanelHeader'
+import { PolicyTab } from './PolicyTab'
+import { RecordsTab } from './RecordsTab'
+import { SessionTab } from './SessionTab'
 import { SettingsTab } from './SettingsTab'
+import { WorkbenchTab } from './WorkbenchTab'
 
 interface Props {
   t: Translate
@@ -15,30 +19,21 @@ interface Props {
 
 export function Panel({ t, uiWorkspace }: Props) {
   const state = usePanelState(uiWorkspace)
-  const { tab, setTab, actions, detailApi } = state
-
   return (
     <div className="dtc-page">
-      <PanelHeader t={t} cards={state.cards} onRefresh={actions.onRefresh} />
-      <KpiRow t={t} cards={state.cards} />
-      <TabBar t={t} tab={tab} onChange={setTab} />
+      <PanelHeader
+        t={t}
+        cards={state.cards}
+        tab={state.tab}
+        onTab={state.setTab}
+        onRefresh={state.actions.onRefresh}
+        onReconcile={state.reconcile}
+        busy={state.busy}
+      />
       {state.notice ? (
         <NoticeToast t={t} notice={state.notice} onClose={state.dismissNotice} />
       ) : null}
       {state.error ? <Banner message={state.error} /> : null}
-      {state.detail ? (
-        <DetailModal
-          t={t}
-          detail={state.detail}
-          precedents={state.precedents}
-          busy={state.busy}
-          onClose={detailApi.closeDetail}
-          onOpenSession={state.openSession}
-          onAction={actions.onAction}
-          onAdopt={actions.onAdopt}
-          onReworked={actions.onReworked}
-        />
-      ) : null}
       {state.warning ? <Banner message={state.warning} /> : null}
       <TabBody t={t} state={state} />
     </div>
@@ -53,38 +48,101 @@ function Banner({ message }: { message: string }) {
   )
 }
 
-/** 卡片页 / 观察者页 / 决策页三选一：三块各自独立，装配留在这里。 */
 function TabBody({ t, state }: { t: Translate; state: PanelState }) {
-  const { tab, actions, detailApi } = state
-  if (tab === 'cards') {
+  const { tab } = state
+  if (tab === 'workbench') return <Workbench t={t} state={state} />
+  if (tab === 'detail') return <Detail t={t} state={state} />
+  if (tab === 'failure') {
     return (
-      <CardsTab
+      <FailureTab
         t={t}
         cards={state.cards}
-        busy={state.busy}
-        draft={state.draft}
-        loading={state.loading}
-        titles={state.titles}
-        onDraftChange={state.setDraft}
-        onAdd={actions.onAdd}
-        onAction={actions.onAction}
-        onAnswer={actions.onAnswer}
-        onRedecide={actions.onRedecide}
-        onDetail={(target) => detailApi.openDetail(target).catch(() => {})}
+        onOpenDetail={state.openCard}
         onOpenSession={state.openSession}
+      />
+    )
+  }
+  if (tab === 'policy') {
+    return (
+      <PolicyTab t={t} settings={state.settings} busy={state.busy} onSave={state.saveSettings} />
+    )
+  }
+  if (tab === 'records') {
+    return (
+      <RecordsTab
+        t={t}
+        active
+        cards={state.cards}
+        onDetail={(card: Card) => state.openCard(card)}
+      />
+    )
+  }
+  if (tab === 'session') {
+    return (
+      <SessionTab
+        t={t}
+        cards={state.cards}
+        sessionId={state.sessionId}
+        onSelectSession={state.selectSession}
+        onOpenDetail={state.openCard}
       />
     )
   }
   return (
     <SettingsTab
       t={t}
-      tab={tab}
       settings={state.settings}
       models={state.models}
-      precedents={state.precedents}
-      records={state.records}
       busy={state.busy}
       onSave={state.saveSettings}
+    />
+  )
+}
+
+function Workbench({ t, state }: { t: Translate; state: PanelState }) {
+  const { actions } = state
+  return (
+    <WorkbenchTab
+      t={t}
+      cards={state.cards}
+      stats={state.stats}
+      busy={state.busy}
+      loading={state.loading}
+      draft={state.draft}
+      titles={state.titles}
+      progress={state.progress}
+      onDraftChange={state.setDraft}
+      onAdd={actions.onAdd}
+      onAction={actions.onAction}
+      onAnswer={actions.onAnswer}
+      onRedecide={actions.onRedecide}
+      onOpenDetail={state.openCard}
+      onOpenSession={state.openSession}
+      onSelectSession={state.selectSession}
+      onReconcile={state.reconcile}
+      paused={state.paused}
+    />
+  )
+}
+
+function Detail({ t, state }: { t: Translate; state: PanelState }) {
+  const { actions } = state
+  const snapshot = state.detail?.card || null
+  const live = snapshot ? state.cards.find((card) => card.id === snapshot.id) || snapshot : null
+  return (
+    <DetailTab
+      t={t}
+      detail={state.detail}
+      card={live}
+      precedents={state.precedents}
+      busy={state.busy}
+      onBack={() => state.setTab('workbench')}
+      onOpenSession={state.openSession}
+      onOpenSessionTab={state.selectSession}
+      onAction={actions.onAction}
+      onAdopt={actions.onAdopt}
+      onReworked={actions.onReworked}
+      onRedecide={actions.onRedecide}
     />
   )
 }

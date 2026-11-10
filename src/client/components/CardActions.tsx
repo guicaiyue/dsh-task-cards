@@ -4,10 +4,16 @@
 // 不给「知道了 / 忽略」这种没有行为差异的二选一。人手写的备忘才需要自己勾掉。
 
 import { needsExplicitConfirm } from '../advice'
-import type { Card, CardActionName, Translate } from '../types'
+import { needsAttention } from '../stage'
+import type { AnswerSelection, Card, CardActionName, Translate } from '../types'
 
 export interface CardHandlers {
-  onAction: (card: Card, action: CardActionName, option?: string) => void
+  onAction: (
+    card: Card,
+    action: CardActionName,
+    option?: string,
+    answers?: AnswerSelection[],
+  ) => void
   onDetail: (target: { card: Card; title: string; sessionId: string }) => void
 }
 
@@ -22,6 +28,11 @@ interface Props extends CardHandlers {
 function DecisionPrimary({ t, card, busy, onAction, onDetail }: Props) {
   const openDetail = () =>
     onDetail({ card, title: card.title, sessionId: card.origin?.sessionId || '' })
+  // 已经批准过的卡（入队/派发/验收中/已确认）不再给「批准」，否则用户会重复点，
+  // 同一句话被投回会话两次。状态本身在 CardMeta 的投递 chip 里展示。
+  if (card.deliveryState && card.deliveryState !== 'idle' && card.deliveryState !== 'invalidated') {
+    return <span className="dtc-chip is-approve">{t('approveInFlight')}</span>
+  }
   if (card.ask === 'clarification') {
     return (
       <button type="button" className="dtc-btn is-primary" disabled={busy} onClick={openDetail}>
@@ -48,9 +59,24 @@ function DecisionPrimary({ t, card, busy, onAction, onDetail }: Props) {
   )
 }
 
-/** 主操作：决策卡批准、手写备忘知道了、自动卡立即执行。通知卡没有主操作。 */
+/** 失败/未知卡的主操作：重新打开（回到待处理后可重新批准或改方向）。 */
+function AttentionPrimary({ t, card, busy, onAction }: Props) {
+  return (
+    <button
+      type="button"
+      className="dtc-btn is-primary"
+      disabled={busy}
+      onClick={() => onAction(card, 'reopen')}
+    >
+      {t('reopen')}
+    </button>
+  )
+}
+
+/** 主操作：失败/未知重开、决策卡批准、手写备忘知道了、自动卡立即执行。 */
 function PrimaryAction(props: Props) {
   const { t, card, busy, onAction } = props
+  if (needsAttention(card)) return <AttentionPrimary {...props} />
   if (card.kind === 'decision') return <DecisionPrimary {...props} />
   if (card.kind === 'auto') {
     return (
@@ -129,9 +155,9 @@ function CloseAction({ t, card, busy, closed, onAction }: Props) {
   )
 }
 
-/** 决策卡查看详情。 */
-function DetailButton({ t, card, busy, closed, onDetail }: Props) {
-  if (card.kind !== 'decision' || closed) return null
+/** 查看详情：任何卡都能看完整链路，已结束的也留着回溯用。 */
+function DetailButton({ t, card, busy, onDetail }: Props) {
+  if (busy) return null
   return (
     <button
       type="button"
@@ -144,9 +170,16 @@ function DetailButton({ t, card, busy, closed, onDetail }: Props) {
   )
 }
 
-/** 其余操作：通知卡只有删除；其它卡是关闭 + 详情 + 删除。 */
+/** 其余操作：关闭 + 详情 + 删除；通知卡与「需关注」卡没有关闭（主操作已是重开）。 */
 function RestActions(props: Props) {
-  if (props.card.kind === 'info') return <RemoveButton {...props} />
+  if (props.card.kind === 'info' || needsAttention(props.card)) {
+    return (
+      <>
+        <DetailButton {...props} />
+        <RemoveButton {...props} />
+      </>
+    )
+  }
   return (
     <>
       <CloseAction {...props} />
@@ -157,9 +190,12 @@ function RestActions(props: Props) {
 }
 
 export function CardActions(props: Props) {
+  // 需关注的卡虽然 status 已被生命周期收成 done（closed=true），仍要给行内动作：
+  // 否则「看不见问题」会变成「看见了也动不了」。
+  const attention = needsAttention(props.card)
   return (
     <div className="dtc-actions">
-      {props.closed ? null : <PrimaryAction {...props} />}
+      {props.closed && !attention ? null : <PrimaryAction {...props} />}
       <RestActions {...props} />
     </div>
   )

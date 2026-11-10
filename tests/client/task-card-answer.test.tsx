@@ -7,7 +7,7 @@ import {
   taskCardAnswerDefinition,
 } from '../../src/client/chat/taskCardAnswer'
 import { DICT } from '../../src/client/locale'
-import { CSS } from '../../src/client/styles'
+import { BASE_CSS as CSS } from '../../src/host/panel/css/base'
 
 const zh = DICT.zh as Record<string, string>
 

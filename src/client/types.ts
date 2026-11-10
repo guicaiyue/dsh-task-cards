@@ -1,9 +1,11 @@
 // 客户端侧的类型：只引用 shared 的类型，不把 zod 带进浏览器。
 
+import type { CaseEvent } from '../shared/case'
 import type {
   Advice,
   AdviceOption,
   AdviceVerdict,
+  AnswerSelection,
   Card,
   CardKind,
   CardSeverity,
@@ -12,6 +14,8 @@ import type {
   PrecedentOutcome,
   Settings,
 } from '../shared/contract'
+import type { EvidenceRecord } from '../shared/evidence'
+import type { TodoList } from '../shared/todo'
 
 export interface Turn {
   user: string
@@ -36,6 +40,79 @@ export interface DetailApi {
   replaceCard: (card: Card) => void
 }
 
+/** 工作台行内进度：该卡清单完成了多少。 */
+export interface CardProgress {
+  done: number
+  total: number
+  frozen: boolean
+}
+
+/** 记录屏的一行：跨卡最近事件。GET /records 的回包。 */
+export interface RecordRow {
+  id: string
+  caseId: string
+  traceId: string
+  at: number
+  phase: string
+  from: string
+  to: string
+  actor: string
+  reason: string
+}
+
+/** 一张卡的案卷：事件、清单、证据。GET /case 的回包。 */
+export interface VerdictRow {
+  id: string
+  cardId: string
+  decisionSeq: number
+  actor: string
+  actorType: string
+  authority: string
+  channel: string
+  decision: string
+  policyVersion: number
+  rationale?: string
+  confidence?: number
+  evidenceRefs: string[]
+  at: number
+}
+
+export interface StatsGroup {
+  cards: number
+  decision: number
+  notices: number
+  interventions: number
+  delegated: number
+  escalated: number
+  waits: number
+  overridden: number
+  delegatedRate: number | null
+  overrideRate: number | null
+  escalationRate: number | null
+  waitRate: number | null
+  cardsPerTurn: number | null
+  interventionsPerTurn: number | null
+  noticePerTurn: number | null
+  unknown: number
+  unknownToHuman: number
+  unknownToHumanRate: number | null
+}
+
+export interface StatsView {
+  ok: boolean
+  generatedAt: number
+  turns: number
+  dataSource: { cardsFile: string; cardsSha256: string; cards: number; syntheticCards: number }
+  groups: { all: StatsGroup; real: StatsGroup }
+}
+
+export interface CaseDetail {
+  events: CaseEvent[]
+  todo: TodoList | null
+  evidence: EvidenceRecord[]
+  verdicts: VerdictRow[]
+}
+
 export interface DetailState {
   sessionId: string
   card: Card | null
@@ -43,13 +120,22 @@ export interface DetailState {
   loading: boolean
   turns: Turn[]
   error?: string
+  /** 案卷（可能还没加载完）：清单与证据都在这里。 */
+  caseInfo?: CaseDetail
 }
 
 /** 面板文案函数：键 + 可选占位符。 */
 export type Translate = (key: string, vars?: Record<string, string | number>) => string
 
-/** 顶部页签：卡片 / 观察者 / 决策。 */
-export type PanelTab = 'cards' | 'observer' | 'decision'
+/** 顶部页签：与 OpenDesign 原型一致的工作台七屏。 */
+export type PanelTab =
+  | 'workbench'
+  | 'detail'
+  | 'failure'
+  | 'policy'
+  | 'records'
+  | 'settings'
+  | 'session'
 
 export type CardActionName =
   | 'complete'
@@ -89,6 +175,7 @@ export type {
   Advice,
   AdviceOption,
   AdviceVerdict,
+  AnswerSelection,
   Card,
   CardKind,
   CardSeverity,

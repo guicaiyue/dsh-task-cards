@@ -1,81 +1,90 @@
-// 面板顶部：标题 + 刷新；下面是四个 KPI。
+// 面板顶部：标题 + 一行状态 + 七屏导航（与 OpenDesign 原型一致）。
 
-import { groupCards, recentInfoCount } from '../../shared/state'
+import { isCardClosed } from '../../shared/state'
+import { needsAttention } from '../stage'
 import type { Card, PanelTab, Translate } from '../types'
 
 const TABS: Array<{ id: PanelTab; label: string }> = [
-  { id: 'cards', label: 'tabCards' },
-  { id: 'observer', label: 'tabObserver' },
-  { id: 'decision', label: 'tabDecision' },
+  { id: 'workbench', label: 'tabWorkbench' },
+  { id: 'detail', label: 'tabDetail' },
+  { id: 'failure', label: 'tabFailure' },
+  { id: 'policy', label: 'tabPolicy' },
+  { id: 'records', label: 'tabRecords' },
+  { id: 'settings', label: 'tabSettings' },
+  { id: 'session', label: 'tabSession' },
 ]
 
 interface Props {
   t: Translate
   cards: Card[]
-  onRefresh: () => void
-}
-
-export function PanelHeader({ t, onRefresh }: Props) {
-  return (
-    <div className="dtc-head">
-      <div>
-        <div className="dtc-eyebrow">{t('eyebrow')}</div>
-        <h1 className="dtc-title">{t('title')}</h1>
-        <div className="dtc-sub">{t('subtitle')}</div>
-      </div>
-      <div className="dtc-spacer" />
-      <button type="button" className="dtc-btn" onClick={onRefresh}>
-        {t('refresh')}
-      </button>
-    </div>
-  )
-}
-
-export function KpiRow({ t, cards }: { t: Translate; cards: Card[] }) {
-  const groups = groupCards(cards)
-  return (
-    <div className="dtc-kpis">
-      <div className="dtc-kpi is-decision">
-        <div className="dtc-kpi-label">{t('kpiDecision')}</div>
-        <div className="dtc-kpi-value">{groups.decision.length}</div>
-      </div>
-      <div className="dtc-kpi" title={t('kpiInfoHint')}>
-        <div className="dtc-kpi-label">{t('kpiInfo')}</div>
-        <div className="dtc-kpi-value">{recentInfoCount(cards)}</div>
-      </div>
-      <div className="dtc-kpi is-auto">
-        <div className="dtc-kpi-label">{t('kpiAuto')}</div>
-        <div className="dtc-kpi-value">{groups.auto.length}</div>
-      </div>
-      <div className="dtc-kpi">
-        <div className="dtc-kpi-label">{t('kpiClosed')}</div>
-        <div className="dtc-kpi-value">{groups.closed.length}</div>
-      </div>
-    </div>
-  )
-}
-
-export function TabBar({
-  t,
-  tab,
-  onChange,
-}: {
-  t: Translate
   tab: PanelTab
-  onChange: (tab: PanelTab) => void
-}) {
+  onTab: (tab: PanelTab) => void
+  onRefresh: () => void
+  onReconcile?: () => void
+  busy?: boolean
+  recordsCount?: number
+}
+
+function attentionCount(cards: Card[]): number {
+  return cards.filter(needsAttention).length
+}
+
+export function PanelHeader({
+  t,
+  cards,
+  tab,
+  onTab,
+  onRefresh,
+  onReconcile,
+  busy,
+  recordsCount,
+}: Props) {
+  const open = cards.filter((card) => !isCardClosed(card)).length
+  const pending = cards.filter(
+    (card) =>
+      (card.deliveryState === 'idle' || card.deliveryState === 'waiting') && !isCardClosed(card),
+  ).length
+  const attention = attentionCount(cards)
+  const counts: Partial<Record<PanelTab, number>> = {
+    workbench: cards.length,
+    failure: attention,
+    records: recordsCount,
+  }
   return (
-    <div className="dtc-tabs">
-      {TABS.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className={`dtc-tab${tab === item.id ? ' is-active' : ''}`}
-          onClick={() => onChange(item.id)}
-        >
-          {t(item.label)}
+    <>
+      <div className="dtc-head">
+        <div>
+          <div className="dtc-eyebrow">DSH · TASK CARDS</div>
+          <h1 className="dtc-title">{t('nav')}</h1>
+          <div className="dtc-sub">
+            {t('statusLine', { cards: cards.length, open, pending, attention })}
+          </div>
+        </div>
+        <div className="dtc-spacer" />
+        {onReconcile ? (
+          <button type="button" className="dtc-btn" disabled={busy} onClick={onReconcile}>
+            {t('reconcile')}
+          </button>
+        ) : null}
+        <button type="button" className="dtc-btn is-primary" disabled={busy} onClick={onRefresh}>
+          {t('refresh')}
         </button>
-      ))}
-    </div>
+      </div>
+      <nav className="dtc-tabs" aria-label={t('tabNav')}>
+        {TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`dtc-tab${item.id === tab ? ' is-active' : ''}`}
+            onClick={() => onTab(item.id)}
+          >
+            {t(item.label)}
+            {typeof counts[item.id] === 'number' ? (
+              <span className="dtc-tab-count">{counts[item.id]}</span>
+            ) : null}
+          </button>
+        ))}
+      </nav>
+    </>
   )
 }

@@ -4,42 +4,63 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { type ActionReply, actOnCard, adopt, createCard, fetchCards, markReworked } from '../api'
-import type { ActionOutcome, Card, CardActionName } from '../types'
+import {
+  type ActionReply,
+  actOnCard,
+  adopt,
+  createCard,
+  fetchCards,
+  fetchProgress,
+  markReworked,
+} from '../api'
+import type { ActionOutcome, Card, CardActionName, CardProgress } from '../types'
 
 export interface CardsState {
   cards: Card[]
+  /** 行内进度：caseId → 完成度；拉不到就空对象（不挡主流程）。 */
+  progress: Record<string, CardProgress>
   warning: string
   loading: boolean
   error: string
   setError: (message: string) => void
   loadCards: (soft?: boolean) => Promise<void>
   add: (title: string) => Promise<boolean>
-  act: (card: Card, action: CardActionName, option?: string) => Promise<ActionOutcome>
+  act: (
+    card: Card,
+    action: CardActionName,
+    option?: string,
+    answers?: Array<{ id: string; selected: string[] }>,
+  ) => Promise<ActionOutcome>
 }
 
 interface ActionContext {
   card: Card
   action: CardActionName
   option?: string
+  answers?: Array<{ id: string; selected: string[] }>
   setCards: (update: (prev: Card[]) => Card[]) => void
   setError: (message: string) => void
   reload: (soft?: boolean) => Promise<void>
 }
 
 /** 票拟的两个动作各有专用封装（采纳带 0 起序号，返工原因走 option）。 */
-function requestAction(card: Card, action: CardActionName, option?: string): Promise<ActionReply> {
+function requestAction(
+  card: Card,
+  action: CardActionName,
+  option?: string,
+  answers?: Array<{ id: string; selected: string[] }>,
+): Promise<ActionReply> {
   if (action === 'adopt') return adopt(card.id, Number(option ?? '0'))
   if (action === 'mark-reworked') return markReworked(card.id, option)
-  return actOnCard(card.id, action, option)
+  return actOnCard(card.id, action, option, answers)
 }
 
 /** 动作请求 + 本地状态更新：删除直接摘掉，其它用宿主回的卡替换。 */
 async function performCardAction(context: ActionContext): Promise<ActionOutcome> {
-  const { card, action, option, setCards, setError, reload } = context
+  const { card, action, option, answers, setCards, setError, reload } = context
   setError('')
   try {
-    const body = await requestAction(card, action, option)
+    const body = await requestAction(card, action, option, answers)
     if (action === 'delete') setCards((prev) => prev.filter((item) => item.id !== card.id))
     else if (body.card)
       setCards((prev) => prev.map((item) => (item.id === card.id ? (body.card as Card) : item)))
@@ -71,6 +92,7 @@ async function createOne(
 
 export function useCards(active: boolean): CardsState {
   const [cards, setCards] = useState<Card[]>([])
+  const [progress, setProgress] = useState<Record<string, CardProgress>>({})
   const [warning, setWarning] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -78,9 +100,13 @@ export function useCards(active: boolean): CardsState {
   const loadCards = useCallback(async (soft = false) => {
     if (!soft) setLoading(true)
     try {
-      const body = await fetchCards()
+      const [body, progressMap] = await Promise.all([
+        fetchCards(),
+        fetchProgress().catch(() => ({}) as Record<string, CardProgress>),
+      ])
       setCards(body.cards)
       setWarning(body.warning)
+      setProgress(progressMap)
     } catch (err) {
       setError((err as Error).message || String(err))
     } finally {
@@ -104,10 +130,15 @@ export function useCards(active: boolean): CardsState {
   const add = useCallback((title: string) => createOne(title, setCards, setError), [])
 
   const act = useCallback(
-    (card: Card, action: CardActionName, option?: string): Promise<ActionOutcome> =>
-      performCardAction({ card, action, option, setCards, setError, reload: loadCards }),
+    (
+      card: Card,
+      action: CardActionName,
+      option?: string,
+      answers?: Array<{ id: string; selected: string[] }>,
+    ): Promise<ActionOutcome> =>
+      performCardAction({ card, action, option, answers, setCards, setError, reload: loadCards }),
     [loadCards],
   )
 
-  return { cards, warning, loading, error, setError, loadCards, add, act }
+  return { cards, progress, warning, loading, error, setError, loadCards, add, act }
 }

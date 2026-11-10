@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react'
 
-import { fetchTimeline } from '../api'
+import { fetchCase, fetchTimeline } from '../api'
 import type { Card, DetailApi, DetailState } from '../types'
 
 export type { DetailApi }
@@ -20,6 +20,7 @@ export function useDetail(): DetailApi {
         return
       }
       setDetail({ sessionId, card, title, loading: true, turns: [] })
+      const caseInfo = card ? fetchCase(card.id).catch(() => undefined) : Promise.resolve(undefined)
       try {
         const body = await fetchTimeline(sessionId)
         setDetail({
@@ -28,6 +29,7 @@ export function useDetail(): DetailApi {
           title: body.title || title,
           loading: false,
           turns: body.turns,
+          caseInfo: await caseInfo,
         })
       } catch (err) {
         setDetail({
@@ -37,6 +39,7 @@ export function useDetail(): DetailApi {
           loading: false,
           turns: [],
           error: (err as Error).message || String(err),
+          caseInfo: await caseInfo,
         })
       }
     },

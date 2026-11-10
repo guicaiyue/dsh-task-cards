@@ -1,20 +1,25 @@
 // 详情弹窗顶部的「这张卡本身」：标题、明细、来源、车道专属动作。
 
 import { useState } from 'react'
-import { isClosed } from '../../shared/state'
+import { isCardClosed } from '../../shared/state'
 import { blockedReasonLabel, effectLabel, needsExplicitConfirm } from '../advice'
-import type { Card, CardActionName, Translate } from '../types'
+import type { AnswerSelection, Card, CardActionName, Translate } from '../types'
 import { QuestionOptions } from './QuestionOptions'
 
 interface Props {
   t: Translate
   card: Card
   busy: boolean
-  onAction: (card: Card, action: CardActionName, option?: string) => void
+  onAction: (
+    card: Card,
+    action: CardActionName,
+    option?: string,
+    answers?: AnswerSelection[],
+  ) => void
 }
 
 export function ModalCardBlock({ t, card, busy, onAction }: Props) {
-  const closed = isClosed(card.status)
+  const closed = isCardClosed(card)
   // 旧卡可能只被票拟纠正过车道，顶层 ask 还没回填；展示时以票拟为准。
   const ask = card.ask || card.advice?.ask || 'judgment'
   return (
@@ -26,7 +31,7 @@ export function ModalCardBlock({ t, card, busy, onAction }: Props) {
         t={t}
         card={card}
         busy={busy}
-        onAnswer={(target, option) => onAction(target, 'answer', option)}
+        onAnswer={(target, option, answers) => onAction(target, 'answer', option, answers)}
         disabled={closed}
       />
       {closed ? (

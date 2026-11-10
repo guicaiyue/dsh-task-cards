@@ -116,13 +116,14 @@ describe('客户端 bundle 的宿主 ABI', () => {
     expect(entry?.dict.zh.dueAt).toContain('{time}')
   })
 
-  it('注入样式，且带插件标记（卸载时能精准摘掉）', () => {
+  it('挂样式表链接，且带插件标记（卸载时能精准摘掉）', () => {
     const { ctx, captured } = harness()
     module_?.apply?.(ctx)
-    const tag = document.querySelector('style[data-plugin="dsh-task-cards"]')
-    expect(tag, '必须注入 <style data-plugin>').toBeTruthy()
-    expect(tag?.textContent).toContain('.dtc-page')
+    const tag = document.querySelector('link[data-plugin="dsh-task-cards"]')
+    expect(tag, '必须挂 <link data-plugin>').toBeTruthy()
+    expect(tag?.getAttribute('rel')).toBe('stylesheet')
+    expect(tag?.getAttribute('href')).toBe('/dsh-task-cards/api/css')
     for (const dispose of captured.disposers) dispose()
-    expect(document.querySelector('style[data-plugin="dsh-task-cards"]')).toBeNull()
+    expect(document.querySelector('link[data-plugin="dsh-task-cards"]')).toBeNull()
   })
 })

@@ -1,9 +1,9 @@
-// 面板状态装配：把卡片、设置、判例/执行记录、详情、动作几件事合成一个对象，组件只读它。
-
 import { useCallback, useEffect, useState } from 'react'
+import { reconcile } from '../api'
 import type {
   ActionNotice,
   Card,
+  CardProgress,
   DetailApi,
   DetailState,
   ModelCatalogView,
@@ -11,7 +11,9 @@ import type {
   PanelTab,
   Precedent,
   Settings,
+  StatsView,
 } from '../types'
+import type { PanelState } from './panel-state-types'
 import { useBusy } from './useBusy'
 import { type CardsState, useCards } from './useCards'
 import { type DecisionsState, useDecisions } from './useDecisions'
@@ -19,90 +21,123 @@ import { useDetail } from './useDetail'
 import { type PanelActions, usePanelActions } from './usePanelActions'
 import { usePresence } from './usePresence'
 import { type SettingsState, useSettings } from './useSettings'
+import { useStats } from './useStats'
 import { useTitles } from './useTitles'
 
 export type Tab = PanelTab
 
-export interface PanelState {
-  tab: Tab
-  setTab: (tab: Tab) => void
-  draft: string
-  setDraft: (value: string) => void
-  cards: Card[]
-  titles: Record<string, string>
-  loading: boolean
-  error: string
-  warning: string
-  busy: boolean
-  settings: Settings | null
-  models: ModelCatalogView | null
-  precedents: Precedent[]
-  /** 决策代理人的最近执行记录（phase=decision）。 */
-  records: ObserverRecord[]
-  /** 批准后的一条结果提示；null 表示没有。 */
-  notice: ActionNotice | null
-  dismissNotice: () => void
-  detail: DetailState | null
-  detailApi: DetailApi
-  actions: PanelActions
-  saveSettings: (next: Settings) => Promise<void>
-  openSession: (sessionId: string) => void
-}
-
 export function usePanelState(uiWorkspace?: {
   openSession?: (sessionId: string) => void
 }): PanelState {
-  const [tab, setTab] = useState<PanelTab>('cards')
+  const core = usePanelCore(uiWorkspace)
+  const wiring = usePanelWiring({
+    tab: core.tab,
+    draft: core.draft,
+    setDraft: core.setDraft,
+    cardState: core.cardState,
+    settingsState: core.settingsState,
+    decisionsState: core.decisionsState,
+    detailApi: core.detailApi,
+    run: core.run,
+    workspace: uiWorkspace,
+    notify: core.setNotice,
+  })
+  return toPanelState(core, wiring)
+}
+
+/** 面板的数据钩子：页签、卡片、设置、判例、详情、在线心跳，以及两个跳转。 */
+function usePanelCore(uiWorkspace?: { openSession?: (sessionId: string) => void }) {
+  const { tab, setTab } = useTabState()
+  const [sessionId, setSessionId] = useState('')
   const [draft, setDraft] = useState('')
   const [notice, setNotice] = useState<ActionNotice | null>(null)
   const { busy, run } = useBusy()
-  const cardState = useCards(tab === 'cards')
+  const cardState = useCards(tab !== 'settings' && tab !== 'policy')
   const titles = useTitles(cardState.cards)
   const settingsState = useSettings(cardState.setError)
   const decisionsState = useDecisions(cardState.setError)
   const detailApi = useDetail()
+  const stats = useStats(tab !== 'settings' && tab !== 'policy')
   usePresence({
     tab,
     sessionId: detailApi.detail?.sessionId,
     openCardId: detailApi.detail?.card?.id,
   })
   usePanelLoads(tab, settingsState, decisionsState, detailApi.detail)
-
-  const wiring = usePanelWiring({
-    tab,
-    draft,
-    setDraft,
-    cardState,
-    settingsState,
-    decisionsState,
-    detailApi,
-    run,
-    workspace: uiWorkspace,
-    notify: setNotice,
-  })
-
+  const openCard = useCallback(
+    (card: Card) => {
+      setTab('detail')
+      detailApi
+        .openDetail({ sessionId: card.origin?.sessionId || '', card, title: card.title })
+        .catch(() => {})
+    },
+    [detailApi, setTab],
+  )
+  const selectSession = useCallback(
+    (id: string) => {
+      setSessionId(id)
+      setTab('session')
+    },
+    [setTab],
+  )
   return {
     tab,
     setTab,
+    sessionId,
+    selectSession,
+    openCard,
+    draft,
+    setDraft,
+    notice,
+    setNotice,
+    busy,
+    run,
+    cardState,
+    titles,
+    settingsState,
+    decisionsState,
+    detailApi,
+    stats,
+    workspace: uiWorkspace,
+  }
+}
+
+export type { PanelState } from './panel-state-types'
+
+type PanelCore = ReturnType<typeof usePanelCore>
+
+/** 把数据钩子与动作装配成一个只读对象，组件只认这一个形状。 */
+function toPanelState(core: PanelCore, wiring: Wiring): PanelState {
+  const { tab, setTab, draft, setDraft, cardState, settingsState, decisionsState } = core
+  return {
+    tab,
+    setTab,
+    sessionId: core.sessionId,
+    selectSession: core.selectSession,
+    openCard: core.openCard,
     draft,
     setDraft,
     cards: cardState.cards,
-    titles,
+    titles: core.titles,
+    progress: cardState.progress,
     loading: cardState.loading,
     error: cardState.error,
     warning: cardState.warning,
-    busy,
+    busy: core.busy,
+    paused: settingsState.settings?.decisionEnabled === false,
     settings: settingsState.settings,
     models: settingsState.models,
     precedents: decisionsState.precedents,
     records: decisionsState.records,
-    notice,
+    notice: core.notice,
     dismissNotice: wiring.dismissNotice,
-    detail: detailApi.detail,
-    detailApi,
+    detail: core.detailApi.detail,
+    detailApi: core.detailApi,
+    stats: core.stats,
     actions: wiring.panel,
     saveSettings: wiring.saveSettings,
     openSession: wiring.openSession,
+    reconcile: wiring.reconcile,
   }
 }
 
@@ -124,6 +159,7 @@ interface Wiring {
   dismissNotice: () => void
   saveSettings: (next: Settings) => Promise<void>
   openSession: (sessionId: string) => void
+  reconcile: () => void
 }
 
 /** 把动作、刷新、保存、打开会话接起来；usePanelState 只负责把状态交出去。 */
@@ -152,14 +188,20 @@ function usePanelWiring(options: WiringOptions): Wiring {
   const openSession = useOpenSession(workspace)
   const saveSettings = useSaveSettings(run, settingsState.save)
   const dismissNotice = useCallback(() => notify(null), [notify])
-  return { panel, dismissNotice, saveSettings, openSession }
+  const onReconcile = useCallback(() => {
+    run(async () => {
+      await reconcile()
+      refresh()
+    }).catch((err: unknown) => cardState.setError((err as Error)?.message || String(err)))
+  }, [run, refresh, cardState])
+  return { panel, dismissNotice, saveSettings, openSession, reconcile: onReconcile }
 }
 
 interface DecisionsSource {
   load: () => Promise<void>
 }
 
-/** 观察者/决策页要设置；决策页与票拟详情还要判例与执行记录。 */
+/** 设置/策略屏要设置；详情屏要判例（票拟里会引用编号）。 */
 function usePanelLoads(
   tab: PanelTab,
   settingsState: SettingsState,
@@ -167,9 +209,11 @@ function usePanelLoads(
   detail: DetailState | null,
 ) {
   useEffect(() => {
-    if (tab === 'cards') return
-    settingsState.loadSettings().catch(() => {})
-    if (tab === 'decision') decisionsState.load().catch(() => {})
+    // 工作台也要设置：顶部横幅要知道决策者是不是被暂停了。
+    if (tab === 'settings' || tab === 'policy' || tab === 'workbench') {
+      settingsState.loadSettings().catch(() => {})
+    }
+    if (tab === 'detail') decisionsState.load().catch(() => {})
   }, [tab, settingsState.loadSettings, decisionsState.load])
 
   const adviceSession = detail?.card?.advice ? detail.sessionId || 'detail' : ''
@@ -178,7 +222,7 @@ function usePanelLoads(
   }, [adviceSession, decisionsState.load])
 }
 
-/** 刷新当前页：卡片页重拉卡片；观察者页重拉设置；决策页再拉执行记录。 */
+/** 刷新当前页：卡片相关的屏重拉卡片，设置相关的屏重拉设置。 */
 function usePanelRefresh(
   tab: PanelTab,
   loadCards: () => Promise<void>,
@@ -186,13 +230,16 @@ function usePanelRefresh(
   loadDecisions: () => Promise<void>,
 ) {
   return useCallback(() => {
-    if (tab === 'cards') {
-      loadCards().catch(() => {})
-      return
-    }
-    loadSettings().catch(() => {})
-    if (tab === 'decision') loadDecisions().catch(() => {})
+    if (tab !== 'settings' && tab !== 'policy') loadCards().catch(() => {})
+    if (tab === 'settings' || tab === 'policy') loadSettings().catch(() => {})
+    if (tab === 'detail') loadDecisions().catch(() => {})
   }, [tab, loadCards, loadSettings, loadDecisions])
+}
+
+/** 页签状态：默认落在工作台；详情屏是「点开一张卡」的结果，不是默认入口。 */
+function useTabState(): { tab: PanelTab; setTab: (tab: PanelTab) => void } {
+  const [tab, setTab] = useState<PanelTab>('workbench')
+  return { tab, setTab }
 }
 
 /** 点「打开会话」：宿主没装工作区视图时就什么都不做。 */

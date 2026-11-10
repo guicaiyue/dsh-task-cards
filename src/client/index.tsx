@@ -17,8 +17,8 @@ import { Panel } from './components/Panel'
 import { PanelIcon } from './components/PanelIcon'
 import { NS, PANEL_ID } from './constants'
 import type { ClientContext, SlotOwner } from './context'
+import { injectPanelCss } from './css'
 import { DICT } from './locale'
-import { injectStyles } from './styles'
 
 export const inject = ['slots', 'locale', 'uiWorkspace', 'uiConversation']
 
@@ -71,5 +71,6 @@ export function apply(ctx: ClientContext): void {
     ),
   )
 
-  ctx.effect(() => injectStyles(), 'dsh-task-cards: styles')
+  // 样式表由宿主以静态资源提供，客户端只挂 <link>（见 client/css.ts）。
+  ctx.effect(() => injectPanelCss(), 'dsh-task-cards: panel css')
 }
