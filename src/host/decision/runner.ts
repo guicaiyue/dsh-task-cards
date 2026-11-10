@@ -6,11 +6,13 @@
 // 失败只记日志与卡事件，绝不抛出：卡本身必须仍然可用。
 // 每次运行都落一条 phase='decision' 的执行记录（哪怕空手而归）。
 
-import type { Card } from '../../shared/contract'
+import type { Card, Outcome, Verdict } from '../../shared/contract'
 import { isClosed } from '../../shared/state'
 import type { PrecedentStore, RecordStore, SettingsStore, Store } from '../cards/store'
 import type { HostRuntime, Log } from '../host-api'
 import { Waiter } from '../observer/waiter'
+import type { ApprovalPolicy } from '../policy/store'
+import { consumeDecisionSemantic } from '../verification/semantic'
 import { applyAdvice } from './apply'
 import { autoApplyAdvice } from './autoapply'
 import { resolveClarification } from './clarify'
@@ -19,29 +21,12 @@ import { type AdviceDraft, parseAdvice } from './parse'
 import { type DecisionPreview, previewDecision } from './preview'
 import { addDecisionRecord, type DecisionRecordStatus } from './record'
 import { guardVagueReference } from './reference'
+import type { DecisionOptions, DecisionRunResult } from './runner-types'
 import { type DecisionAttempt, runDecisionAttempt } from './session'
+import { verdictApplyDeps } from './verdict-hook'
 
-export interface DecisionRunResult {
-  ok: boolean
-  /** 这次出了几张票拟。 */
-  advised: number
-  /** 这次自动执行了几张（投递成功才算）。 */
-  applied: number
-  attempts: number
-  sessionId: string
-  reason?: string
-}
+export type { DecisionOptions, DecisionRunResult }
 
-export interface DecisionOptions {
-  getCtx: () => HostRuntime | null
-  settings: SettingsStore
-  cards: Store
-  precedents: PrecedentStore
-  records: RecordStore
-  log?: Log
-}
-
-/** 一次运行失败或空手而归之后要写的记录。 */
 interface RecordIntent {
   cards: Card[]
   last: DecisionAttempt | null
@@ -58,10 +43,7 @@ function messageOf(err: unknown): string {
   return (err as Error)?.message || String(err)
 }
 
-/**
- * 决策代理人：串行排队，一次会话覆盖一批卡。
- * 事件（session/event、agent/status）由 wire.ts 路由给它自己的 waiter。
- */
+/** 决策代理人：串行排队，一次会话覆盖一批卡（事件由 wire 路由到自己的 waiter）。 */
 export class Decision {
   readonly waiter = new Waiter()
   readonly #getCtx: () => HostRuntime | null
@@ -69,10 +51,29 @@ export class Decision {
   readonly #cards: Store
   readonly #precedents: PrecedentStore
   readonly #records: RecordStore
+  readonly #recordOutcome?: (outcome: Outcome) => Promise<unknown>
+  readonly #verdictDeps: () => {
+    policy?: ApprovalPolicy
+    recordVerdict?: (verdict: Verdict) => Promise<unknown>
+  }
   readonly #log: Log
   #queue: Promise<unknown> = Promise.resolve()
 
-  constructor({ getCtx, settings, cards, precedents, records, log }: DecisionOptions) {
+  constructor({
+    getCtx,
+    settings,
+    cards,
+    precedents,
+    records,
+    plans,
+    approvalPolicy,
+    log,
+  }: DecisionOptions) {
+    this.#verdictDeps = () =>
+      verdictApplyDeps({
+        readPolicy: () => approvalPolicy?.read(),
+        record: plans ? (verdict) => plans.recordVerdict(verdict) : undefined,
+      })
     this.#getCtx = getCtx
     this.#settings = settings
     this.#cards = cards
@@ -207,7 +208,8 @@ export class Decision {
       if (!card) continue
       try {
         const resolved = resolveClarification(card, guardVagueReference(card, draft))
-        const result = await applyAdvice(this.#cards, card, resolved)
+        const result = await applyAdvice(this.#cards, card, resolved, this.#verdictDeps())
+        await consumeDecisionSemantic(result.card, this.#recordOutcome)
         advised += 1
         if (result.corrected) corrected += 1
         const auto = await autoApplyAdvice(this.#autoDeps(allowed), result.card)
