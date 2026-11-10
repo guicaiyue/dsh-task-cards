@@ -1,8 +1,10 @@
 // GET/POST /cards：列表与建卡。
 
+import { sanitizeAll } from '../evidence/guard'
 import { asRecord } from '../host-api'
 import type { HttpRequestLike, HttpResponseLike } from '../http'
 import { readJson, sendJson } from '../http'
+import { assertPanelToken } from './auth'
 import type { RouteDeps } from './deps'
 
 export function createCardsHandler({ cards }: RouteDeps) {
@@ -10,9 +12,16 @@ export function createCardsHandler({ cards }: RouteDeps) {
     if (req.method === 'GET') {
       return sendJson(res, 200, { ok: true, cards: cards.list(), warning: cards.warning })
     }
+    // 建卡是结论性写：只允许面板「记下」（插件内部走 Store，不走这条 HTTP）。
+    assertPanelToken(req)
     const body = await readJson(req)
     const action = asRecord(body.action)
+    const acceptance = sanitizeAll(
+      Array.isArray(body.acceptance) ? (body.acceptance as never[]) : undefined,
+      process.cwd(),
+    )
     const card = await cards.create(body.title, {
+      ...(acceptance.length ? { acceptance } : {}),
       detail: body.detail,
       kind: body.kind,
       severity: body.severity,

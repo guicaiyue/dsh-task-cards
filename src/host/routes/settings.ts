@@ -3,6 +3,7 @@
 import { asRecord } from '../host-api'
 import type { HttpRequestLike, HttpResponseLike } from '../http'
 import { readJson, sendJson } from '../http'
+import { assertPanelToken } from './auth'
 import type { RouteDeps } from './deps'
 
 export function createSettingsHandler({ settings, syncPreset, log }: RouteDeps) {
@@ -10,6 +11,8 @@ export function createSettingsHandler({ settings, syncPreset, log }: RouteDeps) 
     if (req.method === 'GET') {
       return sendJson(res, 200, { ok: true, settings: settings.get(), file: settings.file })
     }
+    // 改设置是结论性动作：要面板令牌（agent 不能替人改策略）。
+    assertPanelToken(req)
     const body = await readJson(req)
     const patch = asRecord(body.settings)
     const next = await settings.set(Object.keys(patch).length ? patch : body)

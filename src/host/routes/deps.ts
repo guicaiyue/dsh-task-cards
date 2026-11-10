@@ -3,7 +3,9 @@
 import type { Policy } from '../../shared/contract'
 import type { PrecedentStore, RecordStore, SettingsStore, Store } from '../cards/store'
 import type { Decision } from '../decision/runner'
+import type { TurnGate } from '../gate/gate'
 import type { HostRuntime } from '../host-api'
+import type { KernelRuntime } from '../kernel/runtime'
 import type { Presence } from '../presence'
 import type { Scanner } from '../scanner/scanner'
 
@@ -21,6 +23,10 @@ export interface RouteDeps {
   scanner: Scanner
   syncPreset: () => Promise<void>
   presence: Presence
+  /** 内核：事件流 / 清单 / 证据 / 调度 / 对账。 */
+  kernel: KernelRuntime
+  /** 回合内闸门：批红发一次性放行券、拒绝清券。 */
+  gate?: TurnGate
 }
 
 /** 取 query 参数：面板只传一两个参数，不值得引入解析库。 */
