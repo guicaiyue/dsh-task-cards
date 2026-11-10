@@ -65,11 +65,13 @@ export class PrecedentStore {
       note: String(input.note ?? '').slice(0, 1000),
       keywords: (input.keywords ?? []).map(String).filter(Boolean).slice(0, 12),
     }
-    const rows = this.#rows()
-    rows.unshift(entry)
-    if (rows.length > PRECEDENT_LIMIT) rows.length = PRECEDENT_LIMIT
-    await this.#doc.write(rows)
-    return { ...entry }
+    // mutate 内部先 readFresh：热重载的两个实例不能各拿缓存整份覆盖。
+    return this.#doc.mutate((current) => {
+      const rows = Array.isArray(current) ? current : []
+      rows.unshift(entry)
+      if (rows.length > PRECEDENT_LIMIT) rows.length = PRECEDENT_LIMIT
+      return { value: rows, result: { ...entry } }
+    })
   }
 
   /** 只改 outcome / note：判例的其余内容是对过去事实的记录，不允许回改。 */
@@ -77,16 +79,19 @@ export class PrecedentStore {
     id: string,
     changes: Pick<Partial<Precedent>, 'outcome' | 'note'>,
   ): Promise<Precedent> {
-    const row = this.#rows().find((item) => item.id === id)
-    if (!row) throw new StoreError('NOT_FOUND', '这条判例不存在')
-    if (changes.outcome !== undefined) row.outcome = normalizeOutcome(changes.outcome)
-    if (changes.note !== undefined) row.note = String(changes.note).slice(0, 1000)
-    await this.#doc.write(this.#rows())
-    return { ...row }
+    return this.#doc.mutate((current) => {
+      const rows = Array.isArray(current) ? current : []
+      const row = rows.find((item) => item.id === id)
+      if (!row) throw new StoreError('NOT_FOUND', '这条判例不存在')
+      if (changes.outcome !== undefined) row.outcome = normalizeOutcome(changes.outcome)
+      if (changes.note !== undefined) row.note = String(changes.note).slice(0, 1000)
+      return { value: rows, result: { ...row } }
+    })
   }
 
+  /** 读也走 readFresh：另一个实例刚写入的判例要能被这次决策读到。 */
   #rows(): Precedent[] {
-    const all = this.#doc.read()
+    const all = this.#doc.readFresh()
     return Array.isArray(all) ? all : []
   }
 }

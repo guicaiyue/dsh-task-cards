@@ -2,12 +2,15 @@
 
 import type { Card } from '../shared/contract'
 import type { PrecedentStore, RecordStore, SettingsStore, Store } from './cards/store'
+import { drainPendingDecisions } from './decision/drain'
 import { isDecisionSession } from './decision/ids'
 import { recordChoice } from './decision/precedent'
 import { registerDecisionPreset } from './decision/preset'
 import { Decision } from './decision/runner'
+import type { TurnGate } from './gate/gate'
 import type { HostRuntime, Log } from './host-api'
 import { asRecord, asString } from './host-api'
+import type { KernelRuntime } from './kernel/runtime'
 import { Observer } from './observer/observer'
 import { registerObserverPreset } from './observer/preset'
 import { SeenTracker } from './observer/seen'
@@ -32,6 +35,9 @@ export interface WireDeps {
   log: Log
   state: PluginState
   presence: Presence
+  kernel: KernelRuntime
+  /** 回合内闸门（危险动作前置拦截）。 */
+  gate: TurnGate
 }
 
 const RUNTIME_SERVICES = [
@@ -126,15 +132,39 @@ export function wireDecision(root: PluginRoot, deps: WireDeps): Decision {
     precedents,
     // 决策每次运行都往这里落一条 phase='decision' 记录（面板的执行记录）。
     records,
+    // 阶段 B：delegated 票写 plans.json verdicts；路由读自愈后的审批策略。
+    plans: deps.kernel.plans,
+    approvalPolicy: deps.kernel.approvalPolicy,
     log: (line: string) => log(`decision: ${line}`),
   })
   routeDecisionEvents(root, decision)
+  // 水平触发排水：补派「无票拟」的 pending_secretary（手动建卡/迁移卡/重启后）。
+  const timer = setInterval(() => {
+    try {
+      drainPendingDecisions({
+        cards,
+        enqueue: (list) => decision.enqueueCards(list),
+        settings: () => settings.get(),
+        log,
+      })
+    } catch (err) {
+      log(`决策排水失败：${(err as Error)?.message || String(err)}`)
+    }
+  }, 30_000)
+  timer.unref?.()
+  root.effect(() => () => clearInterval(timer), 'dsh-task-cards: decision drain')
   return decision
+}
+
+/** 回合内闸门接线：危险动作在工具执行前就被拦住（含降级路径）。 */
+export function wireTurnGate(root: PluginRoot, deps: WireDeps): TurnGate {
+  deps.gate.attach(root)
+  return deps.gate
 }
 
 /** 观察者 + 触发接线；建卡成功后把这一批卡交给决策阶段。 */
 export function wireObserver(root: PluginRoot, deps: WireDeps, decision: Decision): Observer {
-  const { cards, settings, records, log, state, presence } = deps
+  const { cards, settings, records, log, state, presence, gate } = deps
   // 触发端记「用户最后发言」的游标，观察者建卡时据此判断这批内容他是不是已经看过。
   const seen = new SeenTracker()
   const observer = new Observer({
@@ -152,6 +182,8 @@ export function wireObserver(root: PluginRoot, deps: WireDeps, decision: Decisio
   observeTurns(root, {
     observer,
     cards,
+    records,
+    gate,
     settings: () => settings.get(),
     log,
     captureQuestion: (sessionId, data) => captureQuestion(cards, log, sessionId, data),
@@ -207,6 +239,8 @@ export function wireRoutes(
     decision,
     syncPreset,
     presence,
+    kernel,
+    gate,
   } = deps
   root.inject(['webServer'], (ctx: unknown) => {
     const webServer = (ctx as { webServer?: WebServerLike }).webServer
@@ -225,6 +259,8 @@ export function wireRoutes(
         scanner,
         syncPreset,
         presence,
+        kernel,
+        gate,
       },
       log,
       effect: (fn, label) => root.effect(fn, label),

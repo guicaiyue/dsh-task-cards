@@ -8,15 +8,24 @@ import type { HttpRequestLike, HttpResponseLike, RouteSpec } from '../http'
 import { fail } from '../http'
 import { createActionHandler } from './action'
 import { createCardsHandler } from './cards'
+import { createCaseHandler } from './case'
 import { createDecisionsHandler } from './decisions'
 import type { RouteDeps } from './deps'
+import { createEvidenceHandler } from './evidence'
 import { createInspectHandler } from './inspect'
 import { createModelsHandler } from './models'
+import { createPanelCssHandler } from './panel-css'
 import { createPolicyHandler } from './policy'
 import { createPresenceHandler } from './presence'
+import { createProgressHandler } from './progress'
+import { createReconcileHandler } from './reconcile'
+import { createRecordsHandler } from './records'
 import { createSettingsHandler } from './settings'
+import { createStatsHandler } from './stats'
 import { createTimelineHandler } from './timeline'
 import { createTitlesHandler } from './titles'
+import { createTodoHandler } from './todo'
+import { createVerifyHandler } from './verify'
 import { createWorkspacesHandler } from './workspaces'
 
 export interface WebServerLike {
@@ -49,7 +58,18 @@ function wrapHandler(spec: RouteSpec, rejection: (req: HttpRequestLike) => numbe
     try {
       return await inner(req, res)
     } catch (err) {
-      if (err instanceof StoreError) return fail(res, 400, err.code, err.message)
+      if (err instanceof StoreError) {
+        // 台账自证收口（审计 P0-4）：计划绑定/自证类错误按 403，其余仍是 400。
+        const forbidden = new Set([
+          'PLAN_BOUND',
+          'PLAN_MISMATCH',
+          'SELF_REPORT_FORBIDDEN',
+          'PANEL_TOKEN_REQUIRED',
+          'PANEL_ORIGIN_REJECTED',
+          'PANEL_BROWSER_REQUIRED',
+        ])
+        return fail(res, forbidden.has(err.code) ? 403 : 400, err.code, err.message)
+      }
       if (res.headersSent || res.writableEnded) {
         try {
           res.destroy()
@@ -94,7 +114,26 @@ export function registerRoutes(options: RegisterOptions): void {
 
 /** 路由表：路径常量来自 shared/routes.ts，两端共用。 */
 function routeTable(deps: RouteDeps): RouteSpec[] {
-  return [...cardRoutes(deps), ...panelRoutes(deps)]
+  return [...cardRoutes(deps), ...kernelRoutes(deps), ...panelRoutes(deps)]
+}
+
+/** 内核路由：案卷、清单、证据、验收、对账、记录、进度。 */
+function kernelRoutes(deps: RouteDeps): RouteSpec[] {
+  return [
+    [API_ROUTES.caseInfo, 'GET', createCaseHandler],
+    [API_ROUTES.todo, 'POST', createTodoHandler],
+    [API_ROUTES.evidence, 'POST', createEvidenceHandler],
+    [API_ROUTES.reconcile, 'POST', createReconcileHandler],
+    [API_ROUTES.progress, 'GET', createProgressHandler],
+    [API_ROUTES.records, 'GET', createRecordsHandler],
+    [API_ROUTES.verify, 'POST', createVerifyHandler],
+    [API_ROUTES.css, 'GET', createPanelCssHandler],
+  ].map(([path, method, factory]) => ({
+    kind: 'exact' as const,
+    path: path as string,
+    methods: [method as string],
+    handler: (factory as (d: RouteDeps) => RouteSpec['handler'])(deps),
+  }))
 }
 
 /** 卡与动作：面板的主干。 */
@@ -159,6 +198,12 @@ function panelRoutes(deps: RouteDeps): RouteSpec[] {
       path: API_ROUTES.workspaces,
       methods: ['GET'],
       handler: createWorkspacesHandler(deps),
+    },
+    {
+      kind: 'exact',
+      path: API_ROUTES.stats,
+      methods: ['GET'],
+      handler: createStatsHandler(deps),
     },
     {
       kind: 'exact',

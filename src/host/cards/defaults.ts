@@ -35,7 +35,9 @@ action.delayMs 是毫秒：立即用 0，10 分钟用 600000。action.input 是�
 - 只把「用户原话」当作用户意图；「系统代发」是任务卡系统替用户发的卡片答复，不是用户说的。
 - 如果系统代发里有「这张卡 / 刚才那张」这类指代，先用 <ui_context> 和 <recent_cards> 解析；解析不了才建 clarification 卡。
 - 如果模型最后一段是在说「我无法执行 / 没有接口 / 是哪张卡」，先判断是不是系统代发指代失败：能解析就解析，不能解析才建 clarification；不要建 judgment。
-- 如果这轮是系统代发、且模型只是报告执行不了，不要建新的决策卡；最多建一张 info 记录失败。`
+- 如果这轮是系统代发、且模型只是报告执行不了，不要建新的决策卡；最多建一张 info 记录失败。
+- 报「失败 / 没做完 / 还缺 X」时必须给 artifacts（可核验的产物路径，如 ["src/foo.ts"]）；给不出就降成 info 且 severity=low——没有产物的失败结论，之后没法对账，只会变成过期噪音。
+- 需要执行/改动代码的决策卡，尽量给 acceptance（1–3 条可核验检查：file 路径必须在工作区内；exit 只用 pnpm test/typecheck/build/lint、npm test/run、node scripts/…；http 只公网 https）。给不出就留空，面板会标「无验收方式，需人工补充」。`
 
 export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
@@ -50,8 +52,8 @@ export const DEFAULT_SETTINGS: Settings = {
   includeSubagents: false,
   /** 送进观察者的最大输入字节。 */
   maxInputBytes: 16000,
-  /** 单次观察者调用超时。 */
-  timeoutMs: 60000,
+  /** 单次观察者/决策调用超时。实测 flash 模型出票拟常超 60s，留足。 */
+  timeoutMs: 90000,
   // 决策阶段：卡建好后另跑一个只看卡与判例、不出手的会话。
   // decisionPrompt 为空时用 host/decision/defaults.ts 里的默认画像。
   decisionEnabled: true,
@@ -61,4 +63,12 @@ export const DEFAULT_SETTINGS: Settings = {
   decisionPrecedentLimit: 30,
   decisionAutoApply: true,
   autoApproveDiagnostics: false,
+  // 观察者兜底：漏掉的回合由定时扫描 + 会话日志重建补上。
+  autoDecide: true,
+  fallbackObserve: true,
+  // 回执超时：派发后这么久还没等到 origin 会话回合一结束，就判 no-receipt。
+  receiptTimeoutMs: 180000,
+  // 回合内闸门：默认只拦高风险（生产库写入/破坏性命令/花钱/出工作区写），
+  // 工作区内正常读写不拦，否则会把开发打断。
+  turnGate: 'high-risk',
 }

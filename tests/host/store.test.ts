@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { Store, StoreError } from '../../src/host/cards/store'
+import { RecordStore, Store, StoreError } from '../../src/host/cards/store'
 
 function tempFile(name = 'cards.json'): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dtc-store-'))
@@ -97,6 +97,61 @@ describe('卡片存储', () => {
     ).toBe(true)
   })
 
+  it('双实例交错写：旧实例 patch 不会吃掉新实例刚建的卡（热重载回归）', async () => {
+    const file = tempFile()
+    const old = new Store(file)
+    const first = await old.create('热重载前建的卡')
+    const fresh = new Store(file)
+    const second = await fresh.create('热重载后建的卡')
+    // 旧实例还持有热重载前的缓存；它的 patch 必须基于磁盘最新内容
+    await old.patch(first.id, { status: 'done' }, 'completed')
+    const ids = new Store(file).list().map((card) => card.id)
+    expect(ids).toContain(first.id)
+    expect(ids).toContain(second.id)
+    expect(ids).toHaveLength(2)
+  })
+
+  it('双实例同时并发创建：15 + 15 条全部落盘（同进程 per-file 锁）', async () => {
+    const file = tempFile()
+    const a = new Store(file)
+    const b = new Store(file)
+    await Promise.all([
+      ...Array.from({ length: 15 }, (_, i) => a.create(`A-${i}`)),
+      ...Array.from({ length: 15 }, (_, i) => b.create(`B-${i}`)),
+    ])
+    expect(new Store(file).list()).toHaveLength(30)
+  })
+
+  it('双实例并发 patch 同一条卡：不丢卡、不丢条目', async () => {
+    const file = tempFile()
+    const a = new Store(file)
+    const card = await a.create('并发改的卡')
+    const b = new Store(file)
+    await Promise.all([
+      ...Array.from({ length: 25 }, (_, i) =>
+        a.patch(card.id, { severity: i % 2 ? 'high' : 'low' }, `a-${i}`),
+      ),
+      ...Array.from({ length: 25 }, (_, i) =>
+        b.patch(card.id, { severity: i % 2 ? 'low' : 'high' }, `b-${i}`),
+      ),
+    ])
+    const list = new Store(file).list()
+    expect(list).toHaveLength(1)
+    expect(list[0]?.id).toBe(card.id)
+  })
+
+  it('并发 50 次 patch 后条目数不变', async () => {
+    const file = tempFile()
+    const store = new Store(file)
+    const card = await store.create('会被并发改的卡')
+    await Promise.all(
+      Array.from({ length: 50 }, (_, i) =>
+        store.patch(card.id, { severity: i % 2 ? 'high' : 'low' }, `tick-${i}`),
+      ),
+    )
+    expect(new Store(file).list()).toHaveLength(1)
+  })
+
   it('并发写入不丢卡', async () => {
     const store = new Store(tempFile())
     await Promise.all(Array.from({ length: 20 }, (_, i) => store.create(`卡 ${i}`)))
@@ -113,5 +168,27 @@ describe('卡片存储', () => {
     expect(card.status).toBe('scheduled')
     expect(card.dueAt).toBeTypeOf('number')
     expect(card.action?.input).toBe('继续')
+  })
+})
+
+describe('记录存储', () => {
+  it('追加前重读磁盘：别的实例刚写的条目不会被整份覆盖', async () => {
+    const file = tempFile('records.json')
+    const records = new RecordStore(file)
+    await records.add({ phase: 'observer', status: 'ok' } as never)
+
+    // 模拟热重载后另一个实例写入的新条目
+    fs.writeFileSync(
+      file,
+      JSON.stringify([
+        { id: 'r-external', at: 1, phase: 'observer', status: 'ok', external: true },
+      ]),
+      'utf8',
+    )
+
+    await records.add({ phase: 'observer', status: 'ok' } as never)
+    const list = JSON.parse(fs.readFileSync(file, 'utf8')) as Array<Record<string, unknown>>
+    expect(list.some((item) => item.external === true)).toBe(true)
+    expect(list).toHaveLength(2)
   })
 })

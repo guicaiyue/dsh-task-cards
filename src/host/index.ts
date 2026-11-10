@@ -10,6 +10,9 @@
 // 装配细节在 wire.ts，这里只按顺序接线。
 
 import { PrecedentStore, RecordStore, SettingsStore, Store } from './cards/store'
+import { TurnGate } from './gate/gate'
+import { assembleKernel } from './kernel/assemble'
+import { bootKernel } from './kernel/boot'
 import type { PluginRoot } from './observer/trigger'
 import { Presence } from './presence'
 import {
@@ -21,6 +24,7 @@ import {
   wireQuestionHook,
   wireRoutes,
   wireScanner,
+  wireTurnGate,
 } from './wire'
 
 export const name = 'dsh-task-cards'
@@ -36,8 +40,31 @@ export function apply(root: PluginRoot): void {
   // 观察者会记一条「宿主缺少依赖」的异常记录，而不是让插件挂掉。
   const state: PluginState = { runtime: null, presetCtx: null, disposeQuestionHook: () => {} }
   const presence = new Presence()
-  const deps: WireDeps = { cards, settings, records, precedents, log, state, presence }
 
+  // 内核：装配一次，路由与调度共用。
+  const kernel = assembleKernel({
+    cards,
+    log,
+    getCtx: () => state.runtime,
+    settings: () => settings.get(),
+  })
+
+  const gate = new TurnGate({ cards, settings: () => settings.get(), log })
+  const deps: WireDeps = {
+    cards,
+    settings,
+    records,
+    precedents,
+    log,
+    state,
+    presence,
+    kernel,
+    gate,
+  }
+
+  bootKernel({ root, cards, kernel, log })
+
+  wireTurnGate(root, deps)
   wireQuestionHook(root, deps)
   const decision = wireDecision(root, deps)
   wireObserver(root, deps, decision)

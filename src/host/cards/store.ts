@@ -3,16 +3,10 @@
 // 落盘底座（路径 / JsonDoc / 短 id / 业务错误）在 ./doc.ts；这里只放领域读写。
 // 落点与其它插件一致：$DSH_HOME/dsh-task-cards/*.json
 
-import type {
-  Card,
-  CardAction,
-  CardKind,
-  CardSeverity,
-  ObserverRecord,
-  Settings,
-} from '../../shared/contract'
+import type { Card, CardAction, CardKind, CardSeverity, Settings } from '../../shared/contract'
+import { decisionAfter, fillDecision } from '../../shared/decision-state'
 import { DEFAULT_SETTINGS } from './defaults'
-import { DATA_FILE, JsonDoc, nextId, RECORDS_FILE, SETTINGS_FILE, StoreError } from './doc'
+import { DATA_FILE, JsonDoc, nextId, SETTINGS_FILE, StoreError } from './doc'
 
 export {
   DATA_DIR,
@@ -42,6 +36,13 @@ export interface CreateCardOptions {
   origin?: unknown
   /** 用户在原会话里已经看过了：落盘即 acknowledged，并留一条 `via: silent` 事件。 */
   silent?: unknown
+  /** 可核验的产物路径（失败类卡的过期对账用）。 */
+  artifacts?: string[]
+  /** 批准时冻结的验收检查（创建时可由观察者草稿带入，批准时冻结 planId）。 */
+  acceptance?: Card['acceptance']
+  planId?: string
+  /** 阶段 D：三级验收语义票据。 */
+  semantic?: Card['semantic']
 }
 
 function normalizeKind(value: unknown): CardKind {
@@ -68,6 +69,21 @@ function normalizeAction(value: unknown): CardAction | null {
   return { type, delayMs, input, ...(sessionId ? { sessionId } : {}) }
 }
 
+function cardsOf(current: StoredCards): Card[] {
+  return Array.isArray(current) ? current : current.cards
+}
+
+/** 写回时保持原文件的形状（数组 or {cards}），别把旧格式悄悄换掉。 */
+function keepShape(current: StoredCards, cards: Card[]): StoredCards {
+  return Array.isArray(current) ? cards : { cards }
+}
+
+function requireCard(current: StoredCards, id: string): Card {
+  const card = cardsOf(current).find((item) => item.id === id)
+  if (!card) throw new StoreError('NOT_FOUND', '这张卡不存在（可能已被删除）')
+  return card
+}
+
 export class Store {
   #doc: JsonDoc<StoredCards>
 
@@ -84,9 +100,12 @@ export class Store {
     return this.#doc.warning
   }
 
+  /**
+   * 读卡列表。每次都从磁盘重读：插件热重载会同时存在新旧两个实例，
+   * 读缓存会让旧实例看到新实例写入之前的旧内容（与 records 事故同一形状）。
+   */
   #cards(): Card[] {
-    const value = this.#doc.read()
-    return Array.isArray(value) ? value : value.cards
+    return cardsOf(this.#doc.readFresh())
   }
 
   list(): Card[] {
@@ -120,6 +139,10 @@ export class Store {
       question: (extra.question as Card['question']) ?? null,
       ask: normalizeAsk(extra.ask),
       origin: (extra.origin as Card['origin']) ?? null,
+      ...(extra.artifacts?.length ? { artifacts: extra.artifacts.slice(0, 20) } : {}),
+      ...(extra.acceptance?.length ? { acceptance: extra.acceptance } : {}),
+      ...(extra.semantic ? { semantic: extra.semantic } : {}),
+      ...(extra.planId ? { planId: extra.planId } : {}),
       advice: null,
       silent,
       createdAt: now,
@@ -129,9 +152,12 @@ export class Store {
         ...(silent ? [{ at: now, type: 'acknowledged', via: 'silent' }] : []),
       ],
     }
-    this.#cards().unshift(card)
-    await this.#doc.write(this.#cards())
-    return { ...card }
+    fillDecision(card)
+    return this.#doc.mutate((current) => {
+      const cards = cardsOf(current)
+      cards.unshift(card)
+      return { value: keepShape(current, cards), result: { ...card } }
+    })
   }
 
   find(id: string): Card | undefined {
@@ -152,22 +178,26 @@ export class Store {
 
   /** 用户后来才回到会话：把已经落盘的近期通知补标成「已看过」，不再亮未读。 */
   async markSeen(id: string, at: number = Date.now()): Promise<Card> {
-    const card = this.#cards().find((item) => item.id === id)
-    if (!card) throw new StoreError('NOT_FOUND', '这张卡不存在（可能已被删除）')
-    Object.assign(card, { silent: true, status: 'acknowledged', updatedAt: at })
-    card.events.push({ at, type: 'acknowledged', via: 'silent' })
-    await this.#doc.write(this.#cards())
-    return { ...card }
+    return this.#doc.mutate((current) => {
+      const card = requireCard(current, id)
+      Object.assign(card, { silent: true, status: 'acknowledged', updatedAt: at })
+      card.events.push({ at, type: 'acknowledged', via: 'silent' })
+      return { value: current, result: { ...card } }
+    })
   }
 
-  /** 统一的改状态入口：所有变更都留一条事件。 */
+  /** 统一的改状态入口：所有变更都留一条事件，且永远基于磁盘最新内容改。 */
   async patch(id: string, changes: Partial<Card>, event?: string): Promise<Card> {
-    const card = this.#cards().find((item) => item.id === id)
-    if (!card) throw new StoreError('NOT_FOUND', '这张卡不存在（可能已被删除）')
-    Object.assign(card, changes, { updatedAt: Date.now() })
-    card.events.push({ at: Date.now(), type: event || 'updated' })
-    await this.#doc.write(this.#cards())
-    return { ...card }
+    return this.#doc.mutate((current) => {
+      const card = requireCard(current, id)
+      Object.assign(card, changes, { updatedAt: Date.now() })
+      // 阶段 A：写入路径同步落 decision（权威字段）；没有显式值时按快照推导。
+      if (changes.decision) card.decision = changes.decision
+      else if (!card.decision) fillDecision(card)
+      else if (changes.deliveryState || changes.status) card.decision = decisionAfter(card)
+      card.events.push({ at: Date.now(), type: event || 'updated' })
+      return { value: current, result: { ...card } }
+    })
   }
 
   async setState(id: string, state: string): Promise<Card> {
@@ -180,12 +210,13 @@ export class Store {
   }
 
   async remove(id: string): Promise<{ id: string }> {
-    const cards = this.#cards()
-    const index = cards.findIndex((item) => item.id === id)
-    if (index < 0) throw new StoreError('NOT_FOUND', '这张卡不存在（可能已被删除）')
-    cards.splice(index, 1)
-    await this.#doc.write(cards)
-    return { id }
+    return this.#doc.mutate((current) => {
+      const cards = cardsOf(current)
+      const index = cards.findIndex((item) => item.id === id)
+      if (index < 0) throw new StoreError('NOT_FOUND', '这张卡不存在（可能已被删除）')
+      cards.splice(index, 1)
+      return { value: keepShape(current, cards), result: { id } }
+    })
   }
 }
 
@@ -232,50 +263,16 @@ export class SettingsStore {
       next.decisionAutoApply = patch.decisionAutoApply
     if (typeof patch.autoApproveDiagnostics === 'boolean')
       next.autoApproveDiagnostics = patch.autoApproveDiagnostics
+    if (typeof patch.fallbackObserve === 'boolean') next.fallbackObserve = patch.fallbackObserve
+    if (typeof patch.receiptTimeoutMs === 'number' && Number.isFinite(patch.receiptTimeoutMs))
+      next.receiptTimeoutMs = Math.max(10_000, Math.trunc(patch.receiptTimeoutMs))
+    if (patch.turnGate === 'off' || patch.turnGate === 'high-risk' || patch.turnGate === 'all')
+      next.turnGate = patch.turnGate
     await this.#doc.write(next)
     return next
   }
 }
 
-const RECORD_LIMIT = 200
-
-export class RecordStore {
-  #doc: JsonDoc<ObserverRecord[]>
-
-  constructor(file: string = RECORDS_FILE) {
-    this.#doc = new JsonDoc<ObserverRecord[]>(file, () => [])
-  }
-
-  get file(): string {
-    return this.#doc.file
-  }
-
-  list(limit: number = RECORD_LIMIT): ObserverRecord[] {
-    const all = this.#doc.read()
-    return (Array.isArray(all) ? all : []).slice(0, Math.max(1, limit))
-  }
-
-  /** 按 phase 过滤（面板的决策记录只看 decision）：倒序，最多 limit 条。 */
-  listByPhase(phase: ObserverRecord['phase'], limit: number = RECORD_LIMIT): ObserverRecord[] {
-    const all = this.#doc.read()
-    return (Array.isArray(all) ? all : [])
-      .filter((record) => (record.phase || 'observer') === phase)
-      .slice(0, Math.max(1, limit))
-      .map((record) => ({ ...record }))
-  }
-
-  async add(
-    record: Omit<ObserverRecord, 'id' | 'at'> & Record<string, unknown>,
-  ): Promise<ObserverRecord> {
-    const all = this.#doc.read()
-    const list = Array.isArray(all) ? all : []
-    const entry = { id: nextId('r'), at: Date.now(), ...record } as ObserverRecord
-    list.unshift(entry)
-    if (list.length > RECORD_LIMIT) list.length = RECORD_LIMIT
-    await this.#doc.write(list)
-    return entry
-  }
-}
-
-/** 判例库在 ./precedents.ts（JsonDoc 复用）；调用方仍然从 store 取。 */
 export { type PrecedentInput, PrecedentStore } from './precedents'
+/** 调用记录在 ./records.ts（JsonDoc 复用），判例库在 ./precedents.ts。 */
+export { RecordStore } from './records'

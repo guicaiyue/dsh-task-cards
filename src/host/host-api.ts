@@ -60,6 +60,8 @@ export interface AgentMessageLike {
 export interface AgentLike {
   /** 向实时 agent 的收件箱追加一条 user-role 消息；source 决定聊天里怎么显示。 */
   followup?(message: AgentMessageLike): void
+  /** agent 作用域的 ctx：在它上面注册的事件只收这个 agent 的调用（工具门禁用）。 */
+  ctx?: unknown
 }
 
 export interface AgentsLike {
@@ -140,6 +142,18 @@ export interface ToolSchemaLike {
 export interface ToolsLike {
   schemas(): ToolSchemaLike[]
   restrict(options: { deny: string[] }): unknown
+  /**
+   * 单调工具门禁（Dsh 0.2.1-rc.5 起）：同步判定，返回字符串即 deny，
+   * 后续 listener 无法翻回允许。返回 disposer。
+   */
+  guard?(guard: (execution: ToolExecutionLike) => string | undefined): () => unknown
+}
+
+/** tools/pre-execute 的调用形状：name + 解析后的参数 + 发起 agent。 */
+export interface ToolExecutionLike {
+  name: string
+  arguments?: Record<string, unknown>
+  agent?: { id?: string; sessionId?: string; session?: { header?: Record<string, unknown> } }
 }
 
 export interface ConnectionLike {
