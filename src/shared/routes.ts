@@ -13,7 +13,16 @@ export const API_ROUTES = {
   timeline: `${API_PREFIX}/timeline`,
   titles: `${API_PREFIX}/titles`,
   presence: `${API_PREFIX}/presence`,
+  stats: `${API_PREFIX}/stats`,
   decisions: `${API_PREFIX}/decisions`,
+  caseInfo: `${API_PREFIX}/case`,
+  todo: `${API_PREFIX}/todo`,
+  evidence: `${API_PREFIX}/evidence`,
+  reconcile: `${API_PREFIX}/reconcile`,
+  verify: `${API_PREFIX}/verify`,
+  records: `${API_PREFIX}/records`,
+  progress: `${API_PREFIX}/progress`,
+  css: `${API_PREFIX}/css`,
 } as const
 
 export type ApiRouteName = keyof typeof API_ROUTES

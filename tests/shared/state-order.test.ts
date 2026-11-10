@@ -28,12 +28,14 @@ function ids(cards: Row[]): string[] {
 }
 
 describe('卡片列表排序', () => {
-  it('车道：决策 → 知晓 → 自动 → 已结束', () => {
+  it('车道：决策 → 知晓 → 自动 → 需关注 → 执行中 → 已结束', () => {
     expect(cardLane({ kind: 'decision', status: 'open' })).toBe(0)
-    expect(cardLane({ kind: 'info', status: 'open' })).toBe(1)
-    expect(cardLane({ kind: 'auto', status: 'scheduled' })).toBe(2)
-    expect(cardLane({ kind: 'decision', status: 'done' })).toBe(3)
-    expect(cardLane({ kind: 'info', status: 'acknowledged' })).toBe(3)
+    expect(cardLane({ kind: 'info', status: 'open' })).toBe(2)
+    expect(cardLane({ kind: 'auto', status: 'scheduled' })).toBe(3)
+    expect(cardLane({ kind: 'decision', status: 'done' })).toBe(6)
+    expect(cardLane({ kind: 'info', status: 'acknowledged' })).toBe(6)
+    expect(cardLane({ kind: 'decision', status: 'done', deliveryState: 'failed' })).toBe(4)
+    expect(cardLane({ kind: 'decision', status: 'done', deliveryState: 'dispatched' })).toBe(5)
   })
 
   it('刚生成但已结束的卡排在待处理卡后面', () => {

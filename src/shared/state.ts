@@ -1,12 +1,42 @@
 // 状态机与视图分组：面板和路由共用，避免「这里 done、那里 dismissed」的散落判断。
 
-import type { CardKind, CardSeverity, CardStatus } from './contract'
+import { statusForDelivery } from './case-contract'
+import type { CardKind, CardSeverity, CardStatus, DeliveryState } from './contract'
 
 /** 已结束（不再需要动作）的状态。 */
 export const CLOSED_STATUSES: readonly CardStatus[] = ['done', 'dismissed', 'acknowledged']
 
 export function isClosed(status: CardStatus): boolean {
   return CLOSED_STATUSES.includes(status)
+}
+
+/** 判定生命周期需要的最小形状：deliveryState 是执行真源，status 是它的派生值。 */
+export interface LifecycleCard {
+  kind: CardKind
+  status: CardStatus
+  deliveryState?: DeliveryState
+  /** 阶段 B：决定状态机（escalated_user 走独立车道）。 */
+  decision?: string
+}
+
+/**
+ * 这张卡在面板上应有的 status。
+ *
+ * 真源在 shared/case.ts 的 statusForDelivery：主机端 transition 会同步写 status，
+ * 这里再派生一次是为了旧数据（status 没跟上投递状态）也不会被面板误判成待处理。
+ */
+export function effectiveStatus(card: LifecycleCard): CardStatus {
+  return statusForDelivery(card.deliveryState ?? 'idle') ?? card.status
+}
+
+/**
+ * 结束判定统一走这里，别再用 isClosed(card.status)。
+ *
+ * 与 laneOf 同源：失败/未知（attention）与执行中（running）都**不是**已结束。
+ * 只看 status 会把 failed 当 done（派生值），那是面板误判的来源。
+ */
+export function isCardClosed(card: LifecycleCard): boolean {
+  return laneOf(card) === 'closed'
 }
 
 /** 卡片动作 → 落到的状态。路由只认这张表，面板的分组也依赖它。 */
@@ -39,24 +69,69 @@ export const ACTION_EVENT: Record<CardActionName, string> = {
   deny: 'denied',
 }
 
-/** 面板分组：要我决策 / 要我知晓 / 自动处理中 / 已结束。 */
-export interface CardGroups<C extends { kind: CardKind; status: CardStatus }> {
+/**
+ * 卡片在面板上属于哪条车道。这是**唯一**的分组口径（面板分组、KPI、过滤都读它）。
+ *
+ * - `attention`：执行失败 / 判不了 → 必须进「需关注」，**不算已结束**；
+ * - `running`：已批准，正在排队/租约/派发/执行（等回执）→ 不是「已结束」；
+ * - `closed`：验收确认、对账失效，或人手工关掉（idle + 已结束 status）；
+ * - 其余按 kind 归 decision / info / auto。
+ *
+ * 注意顺序：先看 deliveryState（执行真源），再看 status。failed/unknown 的 status 虽被
+ * 生命周期收成 done，但它们不是「已结束」，所以不能先走 isCardClosed。
+ */
+export type CardLane =
+  | 'closed'
+  | 'attention'
+  | 'running'
+  | 'decision'
+  | 'escalated'
+  | 'info'
+  | 'auto'
+
+const RUNNING_STATES: ReadonlySet<DeliveryState> = new Set<DeliveryState>([
+  'waiting',
+  'leased',
+  'dispatched',
+  'executed',
+  'verifying',
+])
+
+export function laneOf(card: LifecycleCard): CardLane {
+  const state = card.deliveryState ?? 'idle'
+  if (state === 'failed' || state === 'unknown') return 'attention'
+  if (state === 'confirmed' || state === 'invalidated') return 'closed'
+  if (RUNNING_STATES.has(state)) return 'running'
+  if (isClosed(card.status)) return 'closed'
+  // 阶段 B：升级给用户的决策独立车道（面板可单独分组显示「为什么升级」）。
+  if (card.kind === 'decision' && card.decision === 'escalated_user') return 'escalated'
+  if (card.kind === 'decision') return 'decision'
+  if (card.kind === 'auto') return 'auto'
+  return 'info'
+}
+
+/** 面板分组：要我决策 / 升级给我 / 要我知晓 / 自动处理中 / 需关注 / 执行中 / 已结束。 */
+export interface CardGroups<C extends LifecycleCard> {
   decision: C[]
+  escalated: C[]
   info: C[]
   auto: C[]
+  attention: C[]
+  running: C[]
   closed: C[]
 }
 
-export function groupCards<C extends { kind: CardKind; status: CardStatus }>(
-  cards: C[],
-): CardGroups<C> {
-  const groups: CardGroups<C> = { decision: [], info: [], auto: [], closed: [] }
-  for (const card of cards) {
-    if (isClosed(card.status)) groups.closed.push(card)
-    else if (card.kind === 'decision') groups.decision.push(card)
-    else if (card.kind === 'auto') groups.auto.push(card)
-    else groups.info.push(card)
+export function groupCards<C extends LifecycleCard>(cards: C[]): CardGroups<C> {
+  const groups: CardGroups<C> = {
+    decision: [],
+    escalated: [],
+    info: [],
+    auto: [],
+    attention: [],
+    running: [],
+    closed: [],
   }
+  for (const card of cards) groups[laneOf(card)].push(card)
   return groups
 }
 
@@ -91,16 +166,29 @@ export interface CardOrder {
   status: CardStatus
   severity: CardSeverity
   createdAt: number
+  deliveryState?: DeliveryState
+  /** 阶段 B：决定状态机（escalated_user 走独立车道）。 */
+  decision?: string
 }
 
 const SEVERITY_WEIGHT: Record<CardSeverity, number> = { high: 3, normal: 2, low: 1 }
 
-/** 处理车道：0 要我决策 → 1 要我知晓 → 2 自动处理中 → 3 已结束。 */
-export function cardLane(card: Pick<CardOrder, 'kind' | 'status'>): number {
-  if (isClosed(card.status)) return 3
-  if (card.kind === 'decision') return 0
-  if (card.kind === 'auto') return 2
-  return 1
+/** 排序顺序：要我决策 → 要我知晓 → 自动处理 → 需关注 → 执行中 → 已结束。 */
+const LANE_ORDER: Record<CardLane, number> = {
+  decision: 0,
+  escalated: 1,
+  info: 2,
+  auto: 3,
+  attention: 4,
+  running: 5,
+  closed: 6,
+}
+
+/** 处理车道序：口径来自 laneOf，别处不要再写一套。 */
+export function cardLane(
+  card: Pick<CardOrder, 'kind' | 'status'> & { deliveryState?: DeliveryState },
+): number {
+  return LANE_ORDER[laneOf(card)]
 }
 
 /** 列表顺序：待处理的在前（决策 → 知晓 → 自动），已结束沉底；同档先重后轻，再新的在前。 */
