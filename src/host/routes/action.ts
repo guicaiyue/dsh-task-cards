@@ -24,6 +24,7 @@ import { readJson, sendJson } from '../http'
 import { kernelEnabled } from '../kernel/flags'
 import { deliverToOrigin } from '../question/deliver'
 import { consumeUserSemantic } from '../verification/semantic'
+import { NO_ACCEPTANCE_MARK as MARK, panelAcceptance } from './acceptance-patch'
 import { approveText, assertApprovable } from './action-text'
 import { adoptCard, answerCard } from './answer'
 import { assertPanelToken } from './auth'
@@ -63,8 +64,8 @@ async function freezePlan(deps: RouteDeps, card: Card): Promise<void> {
   const acceptance = sanitizeAll(card.acceptance, process.cwd())
   const noAcceptance = acceptance.length === 0
   const detail =
-    noAcceptance && !card.detail.includes(NO_ACCEPTANCE_MARK)
-      ? `${card.detail}${card.detail ? '\n' : ''}${NO_ACCEPTANCE_MARK}`
+    noAcceptance && !card.detail.includes(MARK)
+      ? `${card.detail}${card.detail ? '\n' : ''}${MARK}`
       : card.detail
   const frozen = {
     planId: `${card.id}:${card.decisionSeq ?? 0}`,
@@ -77,7 +78,7 @@ async function freezePlan(deps: RouteDeps, card: Card): Promise<void> {
     .catch((err: unknown) => deps.log(`计划冻结写入失败：${messageOf(err)}`))
 }
 
-export const NO_ACCEPTANCE_MARK = '⚠ 无验收方式，需人工补充'
+export { NO_ACCEPTANCE_MARK } from './acceptance-patch'
 
 export function createActionHandler(deps: RouteDeps) {
   const { cards, scanner, precedents, log } = deps
@@ -100,6 +101,8 @@ export function createActionHandler(deps: RouteDeps) {
       return answerCard(deps, card, asString(body.option || body.text), body.answers, res)
     }
     if (name === 'adopt') return adoptCard(deps, card, asString(body.option), res)
+    // 阶段 E/G1：面板一键补验收方式（file/exit/http 模板）——走令牌 + 白名单。
+    if (name === 'acceptance') return panelAcceptance(deps, card, body, req, res)
     // 批红是唯一会把话推回原会话的卡片动作：批准了就应该让那轮对话继续跑。
     // 特权写：批准/拒绝/重开要面板令牌（actor 字段不可信）。
     if (name === 'approve') {

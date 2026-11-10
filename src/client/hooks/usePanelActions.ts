@@ -3,7 +3,7 @@
 
 import { useCallback, useMemo } from 'react'
 
-import { redecide } from '../api'
+import { patchAcceptance, redecide } from '../api'
 import type { ActionNotice, ActionOutcome, Card, CardActionName, DetailApi } from '../types'
 
 interface Options {
@@ -40,6 +40,8 @@ export interface PanelActions {
   onAdopt: (card: Card, index: number) => void
   onReworked: (card: Card, note: string) => void
   onRedecide: (card: Card) => void
+  /** 一键补验收方式（模板：file/exit/http）。 */
+  onFixAcceptance: (card: Card, acceptance: Array<Record<string, unknown>>) => void
   onRefresh: () => void
 }
 
@@ -102,6 +104,13 @@ export function usePanelActions({
         delegate(onAction, card, 'answer', option, answers),
       onAdopt: (card: Card, index: number) => delegate(onAction, card, 'adopt', String(index)),
       onReworked: (card: Card, note: string) => delegate(onAction, card, 'mark-reworked', note),
+      onFixAcceptance: (card: Card, acceptance: Array<Record<string, unknown>>) => {
+        run(async () => {
+          const patched = await patchAcceptance(card.id, acceptance)
+          if (patched) detail.replaceCard(patched)
+          await refresh()
+        }).catch((err: unknown) => reportError((err as Error)?.message || String(err)))
+      },
       onRedecide: (card: Card) => {
         run(async () => {
           await redecide(card.id)
@@ -109,7 +118,7 @@ export function usePanelActions({
         }).catch((err: unknown) => reportError((err as Error)?.message || String(err)))
       },
     }),
-    [onAction, run, refresh, reportError],
+    [onAction, run, refresh, reportError, detail],
   )
   return { onAdd, onAction, ...delegates, onRefresh: refresh }
 }

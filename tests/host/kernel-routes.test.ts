@@ -18,6 +18,7 @@ process.env.DSH_TRUSTED_HOSTS = '192.168.1.4:3080'
 process.env.DSH_TASK_CARDS_TRUSTED_HOSTS = '192.168.1.4:3080'
 
 const { RecordStore, Store } = await import('../../src/host/cards/store')
+type Card = import('../../src/shared/contract').Card
 const { apply } = await import('../../src/host/index')
 
 const CARDS_FILE = path.join(HOME, 'dsh-task-cards', 'cards.json')
@@ -397,6 +398,26 @@ describe('内核路由', () => {
     expect(result.status).toBe(200)
     expect(JSON.stringify(result.json)).not.toContain('planNonce')
     expect(JSON.stringify(result.json)).not.toContain('panelToken')
+  })
+
+  it('E-G1：面板一键补验收（action=acceptance）清洗 + 去「无验收方式」标记', async () => {
+    const store = new Store(CARDS_FILE)
+    const card = await store.create('缺验收的卡', {
+      kind: 'decision',
+      detail: '做完了\n⚠ 无验收方式，需人工补充',
+    })
+    const res = await privileged('POST', '/dsh-task-cards/api/action', {
+      id: card.id,
+      action: 'acceptance',
+      acceptance: [
+        { id: 'a-ok', level: 'E2', spec: { kind: 'file', path: 'package.json', expect: 'exists' } },
+        { id: 'a-bad', level: 'E2', spec: { kind: 'file', path: '/etc/passwd', expect: 'exists' } },
+      ],
+    })
+    expect(res.status).toBe(200)
+    const patched = store.find(card.id) as Card
+    expect(patched.acceptance?.map((item) => item.id)).toEqual(['a-ok'])
+    expect(patched.detail).not.toContain('无验收方式')
   })
 
   it('P0-B：/case 返回 delegated verdicts（审计可读 authority/policyVersion/confidence）', async () => {

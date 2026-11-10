@@ -119,6 +119,8 @@ export const AdviceSchema = z.object({
   confidence: z.enum(CARD_SEVERITIES).default('normal'),
   /** 阶段 D：票拟建议的验收检查；applyAdvice 会先过白名单再落卡。 */
   acceptance: z.array(AcceptanceSchema).optional(),
+  /** 阶段 E/G2：这张票依赖哪些卡（卡 id，同会话）；plan-create 映射成 plan.dependsOn。 */
+  dependsOn: z.array(z.string()).optional(),
   /** 数值置信度（0–1）；有它时按数值路由（≥0.9 可补偿无判例，§12）。 */
   confidenceScore: z.number().min(0).max(1).optional(),
   /** verdict=wait 时的一个追问，用来补上缺的那条信息。 */

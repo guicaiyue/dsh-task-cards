@@ -101,6 +101,25 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 - **delegated 可审计 + override**：`Card.route={decider,reason,threshold,policyVersion,at}` 落盘；delegated 票同时写 `plans.json` 的 `verdicts[]`（`Verdict` 自带 `policyVersion` 字段：authority/confidence/rationale/evidenceRefs/at 齐备），`GET /case?id=` 返回 `verdicts[]{authority,policyVersion,confidence,rationale,evidenceRefs,at}` 供面板详情展开；面板 override 走 `/action {action:'override'}`（要面板令牌），写两条事件 `delegated:overridden` / `delegated:override-ack` 并把 `authority` 改回 user——补偿语义，不回滚旧状态。
 - **KPI**：`kpiOf` 只用于面板当前卡片的即时计数（`pending / escalated / overridden / delegated / running / verifying / attention`，escalated 独立、不进 pending）；所有比率类指标以 `/stats.groups.real` 为唯一数据源（见下文「/stats 口径」）。
 
+## acceptance 生产者（阶段 E/G1）
+
+- **观察者**：提示词要求 write-code / 部署类任务必须给 1–3 条 acceptance（file 优先、测试用 exit `pnpm test`；给不出留空），草稿经 `sanitizeAll` 白名单后落卡；
+- **决策票拟**：提示词要求对执行类卡补 acceptance；`Advice.acceptance` 通道已有，`applyAdvice` 同样过白名单；
+- **面板一键补**：详情「验收」段无验收方式时给 file / exit / http 三个模板按钮（可填参数），走 `POST /action {action:'acceptance', acceptance[]}`（面板令牌 + 服务端白名单二次清洗），成功后去掉 detail 里的 `⚠ 无验收方式，需人工补充` 标记；
+- **覆盖率可观测**：`GET /stats` 的 `groups.{all,real}` 增加 `acceptanceCards` / `acceptanceCoverage`（有 acceptance 的 decision 卡 / decision 卡），面板 KPI 文本行显示「验收覆盖 x%」；
+- 所有入口（observer / decision / 面板 / POST /cards / approve 冻结）都过同一 `sanitizeAll`。
+
+## dependsOn 生产者（阶段 E/G2）
+
+顺序不再靠人：三个生产者把依赖写进卡与计划。
+
+- **决策票拟**：`Advice.dependsOn?: string[]`（卡 id，同会话）——决策代理人输出，`parse.ts` 解析，`applyAdvice` 落卡；
+- **观察者草稿**：`CardDraft.blockedBy?: string[]`（卡 id，同会话）——建卡时落 `Card.blockedBy`（`CreateCardOptions.blockedBy`，最多 8 个）；
+- **映射**：`plan-create.ts::resolvePlanDeps` 合并 `blockedBy ∪ advice.dependsOn` → `plan.dependsOn`：只允许**同 origin 会话**且目标**已批准**（有 plan）；跨会话/不存在/未批准一律忽略并记日志；**成环的边拒绝并记日志**（DFS 沿已有 plan.dependsOn）；
+- **调度语义不变**：依赖 plan 无 `confirmed` outcome → 卡 `waitReason='depends-on'`（面板标签「等依赖完成」）；依赖完成后下一 tick 自动派发（C 阶段拓扑等待）；
+- **面板**：详情新增「依赖」段，列 `blockedBy ∪ advice.dependsOn` 并显示「等 X 完成」；`wait_depends-on` 标签入 workbench 文案；
+- 无生产者时 `dependsOn` 为空，行为与旧版一致（测试覆盖）。
+
 ## 重试策略与升级（C/D 收口）
 
 - **每 plan 最多 3 次 attempt**；失败间隔指数退避 **2s / 10s / 60s**（`scheduler/retry.ts::BACKOFF_MS`）；

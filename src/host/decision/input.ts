@@ -11,6 +11,8 @@ export const DECISION_INPUT_MAX_BYTES = 16000
 const HEADER = [
   '请对下面这些新建的卡各出一张票拟，只输出 JSON。',
   '一张卡一条 decisions，不要合并也不要拆分；没有要判断的就输出 {"decisions":[]}。',
+  '如果这一步必须等另一张卡完成，在该条 decisions 里加 dependsOn:[那张卡的 id]（只允许同会话依赖；没有依赖就不填）。',
+  '对 write-code / 部署类卡，在 decisions 里补 acceptance（1–3 条：file 路径在工作区内 / exit 只 pnpm test|typecheck|build|lint / http 公网 https）；给不出就不填。',
 ].join('\n')
 
 /** 判例只是参照：单字段截短，别让它把卡的预算挤掉。 */

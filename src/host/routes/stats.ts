@@ -83,9 +83,12 @@ function kpiOf(cards: readonly Card[], turns: number, approvals = 0) {
       card.waitReason === 'retry-exhausted' ||
       card.kind === 'decision',
   )
+  const withAcceptance = decision.filter((card) => (card.acceptance?.length ?? 0) > 0)
   return {
     cards: cards.length,
     decision: decision.length,
+    acceptanceCards: withAcceptance.length,
+    acceptanceCoverage: ratio(withAcceptance.length, decision.length),
     advised: advised.length,
     reversible: reversible.length,
     notices: notices.length,

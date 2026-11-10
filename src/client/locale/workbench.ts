@@ -40,8 +40,8 @@ export const WORKBENCH_DICT: ExtraDict = {
   filter_escalated: { zh: '等升级', en: 'Escalated' },
   kpiServerLoading: { zh: 'KPI 统计加载中（服务端 /stats）…', en: 'Loading server KPI…' },
   kpiServer: {
-    zh: '服务端口径（真实回合 {turns}，sha {sha}）：delegated {delegatedRate} / override {overrideRate} / 升级 {escalationRate} / wait {waitRate} / 卡 {cardsPerTurn} 张/回合 / 干预 {interventionsPerTurn} 次/回合 / 通知 {noticePerTurn} / unknown 落人 {unknownRate}',
-    en: 'Server (turn {turns}, sha {sha}): delegated {delegatedRate} / override {overrideRate} / escalated {escalationRate} / wait {waitRate} / {cardsPerTurn} cards/turn / {interventionsPerTurn} interventions/turn / notices {noticePerTurn} / unknown→human {unknownRate}',
+    zh: '服务端口径（真实回合 {turns}，sha {sha}）：delegated {delegatedRate} / override {overrideRate} / 升级 {escalationRate} / wait {waitRate} / 卡 {cardsPerTurn} 张/回合 / 干预 {interventionsPerTurn} 次/回合 / 通知 {noticePerTurn} / unknown 落人 {unknownRate} / 验收覆盖 {acceptanceCoverage}',
+    en: 'Server (turn {turns}, sha {sha}): delegated {delegatedRate} / override {overrideRate} / escalated {escalationRate} / wait {waitRate} / {cardsPerTurn} cards/turn / {interventionsPerTurn} interventions/turn / notices {noticePerTurn} / unknown→human {unknownRate} / acceptance {acceptanceCoverage}',
   },
   kpiRates: {
     zh: '六项：delegated {delegatedRate} / override {overrideRate} / 升级 {escalationRate} / wait {waitRate} / 卡 {cardsPerTurn} 张/回合 / 干预 {interventionsPerTurn} 次/回合（回合数 {turns}，来自真实 origin.turn）',
@@ -94,6 +94,8 @@ export const WORKBENCH_DICT: ExtraDict = {
   wait_preempted: { zh: '被抢占', en: 'preempted' },
   'wait_lease-expired': { zh: '租约过期', en: 'lease expired' },
   wait_retrying: { zh: '重试中', en: 'retrying' },
+  'wait_depends-on': { zh: '等依赖完成', en: 'waiting on dependency' },
+  'wait_retry-exhausted': { zh: '重试已用尽', en: 'retries exhausted' },
   authorityDelegated: { zh: '秘书代批', en: 'secretary (delegated)' },
   authorityUser: { zh: '你本人', en: 'you' },
   authoritySystem: { zh: '系统', en: 'system' },

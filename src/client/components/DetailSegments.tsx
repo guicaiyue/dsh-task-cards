@@ -8,7 +8,9 @@ import { isAdviceApplied } from '../advice'
 import { authorityLabel, traceShort, verifyKeyOf, waitLabelKey } from '../stage'
 import { timeLabel } from '../time'
 import type { Card, DetailState, Precedent, Translate } from '../types'
+import { AcceptanceBlock } from './AcceptanceBlock'
 import { AdviceBlock } from './AdviceBlock'
+import { DependencySegment } from './DependencySegment'
 import { TurnBlock } from './TurnBlock'
 
 export interface SegmentsProps {
@@ -20,6 +22,8 @@ export interface SegmentsProps {
   onAdopt: (card: Card, index: number) => void
   onReworked: (card: Card, note: string) => void
   onRedecide: (card: Card) => void
+  /** 一键补验收方式（模板 file/exit/http）。 */
+  onFixAcceptance?: (card: Card, acceptance: Array<Record<string, unknown>>) => void
 }
 
 export function DetailSegments(props: SegmentsProps) {
@@ -31,6 +35,7 @@ export function DetailSegments(props: SegmentsProps) {
       <RunSegment {...props} />
       <VerifySegment {...props} />
       <VerdictSegment {...props} />
+      <DependencySegment t={props.t} card={props.card} />
     </>
   )
 }
@@ -235,11 +240,13 @@ function VerdictSegment({ t, card, detail }: SegmentsProps) {
   )
 }
 
-/** ⑤ 验收：判成什么、证据长什么样。 */
-function VerifySegment({ t, card, detail }: SegmentsProps) {
+/** ⑤ 验收：判成什么、证据长什么样；无验收方式时给一键补。 */
+function VerifySegment({ t, card, detail, onFixAcceptance }: SegmentsProps) {
   const evidence = detail?.caseInfo?.evidence ?? []
+  const acceptance = card.acceptance ?? []
   return (
     <Segment title={t('segVerify')} aside={t(verifyKeyOf(card))}>
+      <AcceptanceBlock t={t} card={card} {...(onFixAcceptance ? { onFixAcceptance } : {})} />
       {evidence.length ? (
         <ul className="dtc-case-list">
           {evidence.map((record) => (

@@ -20,6 +20,7 @@ export interface DetailTabProps {
   onAdopt: (card: Card, index: number) => void
   onReworked: (card: Card, note: string) => void
   onRedecide: (card: Card) => void
+  onFixAcceptance?: (card: Card, acceptance: Array<Record<string, unknown>>) => void
 }
 
 export function DetailTab(props: DetailTabProps) {
@@ -73,6 +74,7 @@ export function DetailTab(props: DetailTabProps) {
         onAdopt={props.onAdopt}
         onReworked={props.onReworked}
         onRedecide={props.onRedecide}
+        {...(props.onFixAcceptance ? { onFixAcceptance: props.onFixAcceptance } : {})}
       />
     </section>
   )

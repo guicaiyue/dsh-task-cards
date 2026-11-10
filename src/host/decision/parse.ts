@@ -108,6 +108,7 @@ function toDraft(value: unknown, knownIds: ReadonlySet<string>): AdviceDraft | n
     ask: pickEnum<AskKind>(raw.ask, ASKS, 'judgment'),
     effect: pickEnum<Effect>(raw.effect, EFFECTS, 'write-code'),
     requires: textList(raw.requires, 8),
+    dependsOn: textList(raw.dependsOn, 8),
     action: text(raw.action, 1000),
     scope: text(raw.scope, 400),
     reversible: raw.reversible === true,

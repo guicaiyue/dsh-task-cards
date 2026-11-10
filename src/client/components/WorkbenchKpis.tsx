@@ -24,6 +24,7 @@ function ratesText(t: Translate, stats: StatsView | null): string {
     interventionsPerTurn: num(server.interventionsPerTurn),
     noticePerTurn: num(server.noticePerTurn),
     unknownRate: pct(server.unknownToHumanRate),
+    acceptanceCoverage: pct(server.acceptanceCoverage),
     turns: stats?.turns ?? 0,
     sha: (stats?.dataSource.cardsSha256 ?? '').slice(0, 6),
   })

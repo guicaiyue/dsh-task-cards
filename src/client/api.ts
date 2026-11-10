@@ -178,6 +178,19 @@ export function pingPresence(
     .catch(() => {})
 }
 
+/** 面板一键补验收方式（file/exit/http 模板）；服务端会再走白名单 + 令牌。 */
+export async function patchAcceptance(
+  caseId: string,
+  acceptance: Array<Record<string, unknown>>,
+): Promise<Card | null> {
+  const body = await call<{ card?: Card | null }>(`${API}/action`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id: caseId, action: 'acceptance', acceptance }),
+  })
+  return body.card ?? null
+}
+
 /** 一张卡的案卷：事件流 + 清单 + 证据。详情弹窗用它渲染验收信息。 */
 export async function fetchCase(caseId: string): Promise<CaseDetail> {
   const body = await call<{

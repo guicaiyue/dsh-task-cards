@@ -43,6 +43,8 @@ export interface CreateCardOptions {
   planId?: string
   /** 阶段 D：三级验收语义票据。 */
   semantic?: Card['semantic']
+  /** 阶段 E/G2：卡片级依赖（卡 id）。 */
+  blockedBy?: string[]
 }
 
 function normalizeKind(value: unknown): CardKind {
@@ -142,6 +144,7 @@ export class Store {
       ...(extra.artifacts?.length ? { artifacts: extra.artifacts.slice(0, 20) } : {}),
       ...(extra.acceptance?.length ? { acceptance: extra.acceptance } : {}),
       ...(extra.semantic ? { semantic: extra.semantic } : {}),
+      ...(extra.blockedBy?.length ? { blockedBy: extra.blockedBy } : {}),
       ...(extra.planId ? { planId: extra.planId } : {}),
       advice: null,
       silent,

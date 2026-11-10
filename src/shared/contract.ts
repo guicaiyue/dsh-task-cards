@@ -167,6 +167,8 @@ export const CardSchema = z.object({
   decision: DecisionStateSchema.optional(),
   /** 授权路由结论（阶段 B）：谁该做这个决定 + 依据 + 策略版本。 */
   route: RouteSchema.optional(),
+  /** 阶段 E/G2：卡片级依赖（卡 id，同会话）；批准时映射为 plan.dependsOn。 */
+  blockedBy: z.array(z.string()).optional(),
   /** 阶段 D：三级验收的语义票据（decision/user 级）；system 级不需要。 */
   semantic: z
     .object({
@@ -260,6 +262,8 @@ export const CardDraftSchema = z.object({
   artifacts: z.array(z.string()).optional(),
   /** 阶段 D：观察者可给出可核验的验收检查（file/exit/http），落库前走服务端白名单。 */
   acceptance: z.array(AcceptanceSchema).optional(),
+  /** 阶段 E/G2：这张卡被哪些卡阻塞（卡 id，同会话）；批准时映射成 plan.dependsOn。 */
+  blockedBy: z.array(z.string()).optional(),
 })
 export type CardDraft = z.infer<typeof CardDraftSchema>
 

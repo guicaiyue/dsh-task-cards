@@ -37,7 +37,8 @@ action.delayMs 是毫秒：立即用 0，10 分钟用 600000。action.input 是�
 - 如果模型最后一段是在说「我无法执行 / 没有接口 / 是哪张卡」，先判断是不是系统代发指代失败：能解析就解析，不能解析才建 clarification；不要建 judgment。
 - 如果这轮是系统代发、且模型只是报告执行不了，不要建新的决策卡；最多建一张 info 记录失败。
 - 报「失败 / 没做完 / 还缺 X」时必须给 artifacts（可核验的产物路径，如 ["src/foo.ts"]）；给不出就降成 info 且 severity=low——没有产物的失败结论，之后没法对账，只会变成过期噪音。
-- 需要执行/改动代码的决策卡，尽量给 acceptance（1–3 条可核验检查：file 路径必须在工作区内；exit 只用 pnpm test/typecheck/build/lint、npm test/run、node scripts/…；http 只公网 https）。给不出就留空，面板会标「无验收方式，需人工补充」。`
+- 如果这一步必须等某张已有卡完成，在 blockedBy 里填那张卡的 id（只限同会话；同会话无人能确认就别填）。
+- **write-code / 部署类任务必须给 1–3 条 acceptance**（file 优先：路径必须在工作区内；测试用 exit pnpm test；http 只公网 https）。给不出可核验的检查就留空，面板会标「无验收方式，需人工补充」并给一键补。`
 
 export const DEFAULT_SETTINGS: Settings = {
   enabled: true,

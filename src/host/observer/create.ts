@@ -45,6 +45,9 @@ export function draftCreateOptions(
     origin,
     silent: seen && lane.kind === 'info',
     ...(draft.artifacts?.length ? { artifacts: draft.artifacts } : {}),
+    ...(draft.blockedBy?.length
+      ? { blockedBy: draft.blockedBy.filter((id) => typeof id === 'string').slice(0, 8) }
+      : {}),
     // 阶段 D：观察者草稿里的验收检查必须过服务端白名单（工作区/敏感路径/SSRF/命令前缀）。
     ...(() => {
       const acceptance = sanitizeAll(draft.acceptance, process.cwd())

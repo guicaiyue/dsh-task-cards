@@ -141,6 +141,7 @@ function Detail({ t, state }: { t: Translate; state: PanelState }) {
       onOpenSessionTab={state.selectSession}
       onAction={actions.onAction}
       onAdopt={actions.onAdopt}
+      onFixAcceptance={actions.onFixAcceptance}
       onReworked={actions.onReworked}
       onRedecide={actions.onRedecide}
     />
