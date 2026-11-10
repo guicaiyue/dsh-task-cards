@@ -111,6 +111,21 @@ function response(): FakeResponse {
   }
 }
 
+let panelToken = ''
+
+/** 特权写（POST /settings 等）要面板令牌：先从 presence 通道拿一枚。 */
+async function ensurePanelToken(_routes?: Map<string, Handler>): Promise<string> {
+  if (panelToken) return panelToken
+  const { issuePanelToken } = await import('../../src/host/routes/auth')
+  panelToken = issuePanelToken({
+    headers: {
+      origin: 'http://127.0.0.1:13080',
+      'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0',
+    },
+  }).token
+  return panelToken
+}
+
 async function call(
   routes: Map<string, Handler>,
   method: string,
@@ -120,7 +135,20 @@ async function call(
   const handler = routes.get(url.split('?')[0] as string)
   expect(handler, `路由未注册：${url}`).toBeTruthy()
   const res = response()
-  await handler?.(request(method, url, options), res)
+  const privileged =
+    method === 'POST' && /\/(settings|action|todo|cards)$/.test(url.split('?')[0] ?? '')
+  const merged = privileged
+    ? {
+        ...options,
+        headers: {
+          ...(options?.headers ?? {}),
+          origin: 'http://127.0.0.1:13080',
+          'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0',
+          'x-panel-token': await ensurePanelToken(routes),
+        },
+      }
+    : options
+  await handler?.(request(method, url, merged), res)
   return { status: res.statusCode, json: res.body ? JSON.parse(res.body) : null }
 }
 
@@ -260,6 +288,23 @@ describe('面板后端路由', () => {
       expect(
         (saved.json as unknown as { settings: { minReplyChars: number } }).settings.minReplyChars,
       ).toBe(42)
+    } finally {
+      dispose()
+    }
+  })
+
+  it('面板样式表：GET /css 回 text/css，覆盖七屏与深色', async () => {
+    const { routes, dispose } = harness()
+    try {
+      const handler = routes.get('/dsh-task-cards/api/css')
+      expect(handler, '样式路由必须注册').toBeTruthy()
+      const res = response()
+      await handler?.(request('GET', '/dsh-task-cards/api/css'), res)
+      expect(res.statusCode).toBe(200)
+      expect(String(res.headers['Content-Type'])).toContain('text/css')
+      expect(res.body).toContain('.dtc-page')
+      expect(res.body).toContain('.dtc-stage')
+      expect(res.body).toContain('body[data-ds-dark-theme]')
     } finally {
       dispose()
     }

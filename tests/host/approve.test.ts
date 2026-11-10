@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import type { Advice, Card } from '../../src/shared/contract'
 
@@ -150,6 +150,22 @@ function response(): FakeResponse {
   }
 }
 
+let panelToken = ''
+
+/** 特权写（approve/deny）要面板令牌：先从 presence 通道拿一枚。 */
+async function tokenOf(routes: Map<string, Handler>): Promise<string> {
+  if (panelToken) return panelToken
+  const res = response()
+  await routes.get(`${API}/presence`)?.(
+    request('POST', `${API}/presence`, {
+      body: JSON.stringify({ sessionId: 's-panel', active: true }),
+    }),
+    res,
+  )
+  panelToken = res.body ? String((JSON.parse(res.body) as { token?: string }).token ?? '') : ''
+  return panelToken
+}
+
 async function call(
   routes: Map<string, Handler>,
   method: string,
@@ -159,7 +175,16 @@ async function call(
   const handler = routes.get(url.split('?')[0] as string)
   expect(handler, `路由未注册：${url}`).toBeTruthy()
   const res = response()
-  await handler?.(request(method, url, options), res)
+  const privileged = url.endsWith('/action')
+  const headers = privileged
+    ? {
+        ...(options?.headers ?? {}),
+        origin: 'http://127.0.0.1:13080',
+        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0',
+        'x-panel-token': await tokenOf(routes),
+      }
+    : options?.headers
+  await handler?.(request(method, url, { ...options, ...(headers ? { headers } : {}) }), res)
   return { status: res.statusCode, json: res.body ? (JSON.parse(res.body) as Json) : null }
 }
 
@@ -219,6 +244,120 @@ async function listPrecedents(routes: Map<string, Handler>): Promise<Json[]> {
 function findCard(cards: Card[], id: string): Card | undefined {
   return cards.find((card) => card.id === id)
 }
+
+describe('多问题卡逐题作答', () => {
+  beforeEach(() => {
+    fs.rmSync(DATA_DIR, { recursive: true, force: true })
+  })
+
+  const ITEMS = [
+    { id: 'q1', question: '用哪个数据库', options: ['SQLite', 'Postgres'] },
+    { id: 'q2', question: '部署到哪', options: ['本机', 'NAS', '云'] },
+    { id: 'q3', question: '先做哪端', options: ['Web', '安卓'] },
+  ]
+
+  async function seedQuestion(): Promise<Card> {
+    const store = new Store(CARDS_FILE)
+    return store.create('三个问题等你定', {
+      kind: 'decision',
+      source: 'agent',
+      interaction: 'question',
+      question: { sessionId: 's-q', items: ITEMS },
+      origin: { sessionId: 's-q' },
+    })
+  }
+
+  it('3 题各选不同值：服务端收到逐题 answers，投递文本逐题拼接', async () => {
+    const card = await seedQuestion()
+    const { routes, prompts, dispose } = harness('ok')
+    try {
+      const res = await call(routes, 'POST', `${API}/action`, {
+        body: JSON.stringify({
+          id: card.id,
+          action: 'answer',
+          answers: [
+            { id: 'q1', selected: ['Postgres'] },
+            { id: 'q2', selected: ['NAS'] },
+            { id: 'q3', selected: ['安卓'] },
+          ],
+        }),
+      })
+      expect(res.status).toBe(200)
+      const after = findCard(await listCards(routes), card.id)
+      expect(after?.status).toBe('done')
+      expect(after?.answers).toEqual([
+        { id: 'q1', selected: ['Postgres'] },
+        { id: 'q2', selected: ['NAS'] },
+        { id: 'q3', selected: ['安卓'] },
+      ])
+      // 投递文本按「问题 → 选择」逐题拼接，不是同一句话复制三遍
+      const text = prompts[0]?.text ?? ''
+      expect(text).toContain('用哪个数据库 → Postgres')
+      expect(text).toContain('部署到哪 → NAS')
+      expect(text).toContain('先做哪端 → 安卓')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('缺一题 → 400 INCOMPLETE_ANSWERS，且不投递', async () => {
+    const card = await seedQuestion()
+    const { routes, prompts, dispose } = harness('ok')
+    try {
+      const res = await call(routes, 'POST', `${API}/action`, {
+        body: JSON.stringify({
+          id: card.id,
+          action: 'answer',
+          answers: [
+            { id: 'q1', selected: ['Postgres'] },
+            { id: 'q2', selected: ['NAS'] },
+          ],
+        }),
+      })
+      expect(res.status).toBe(400)
+      expect(res.json?.code).toBe('INCOMPLETE_ANSWERS')
+      expect(prompts).toHaveLength(0)
+      expect(findCard(await listCards(routes), card.id)?.status).toBe('open')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('单题卡保持一键作答：不带 answers 也照旧投递', async () => {
+    const store = new Store(CARDS_FILE)
+    const card = await store.create('一个问题', {
+      kind: 'decision',
+      source: 'agent',
+      interaction: 'question',
+      question: {
+        sessionId: 's-one',
+        items: [{ id: 'q1', question: '要不要继续', options: ['继续', '停'] }],
+      },
+      origin: { sessionId: 's-one' },
+    })
+    const { routes, prompts, dispose } = harness('ok')
+    try {
+      const res = await call(routes, 'POST', `${API}/action`, {
+        body: JSON.stringify({ id: card.id, action: 'answer', option: '继续' }),
+      })
+      expect(res.status).toBe(200)
+      expect(prompts[0]?.text).toContain('继续')
+      expect(findCard(await listCards(routes), card.id)?.status).toBe('done')
+    } finally {
+      dispose()
+    }
+  })
+})
+
+// 特权写要面板令牌：测试里直接按 presence 通道的等价方式签发一枚。
+beforeAll(async () => {
+  const { issuePanelToken } = await import('../../src/host/routes/auth')
+  const headers = {
+    origin: 'http://127.0.0.1:13080',
+    'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0',
+  }
+  panelToken = issuePanelToken({ headers }).token
+})
 
 describe('批红 = 把话推回原会话', () => {
   beforeEach(() => {

@@ -34,6 +34,7 @@ export async function answerQuestion(
   card: Card,
   text: string,
   ctx: HostRuntime | null,
+  answers?: Array<{ id: string; selected: string[] }>,
 ): Promise<AnswerResult> {
   const question = (card.question || {}) as CardQuestion
   const sessionId = question.sessionId || card.origin?.sessionId
@@ -48,10 +49,13 @@ export async function answerQuestion(
       const agent = (ctx.agents.list?.() || []).find((item) => item?.sessionId === sessionId)
       if (agent && ctx.userQuestions && typeof ctx.userQuestions.answer === 'function') {
         const items = Array.isArray(question.items) ? question.items : []
-        const answers = items.length
-          ? items.map((item) => ({ id: item.id, selected: [text] }))
-          : [{ id: question.id || 'q', selected: [text] }]
-        const accepted = await ctx.userQuestions.answer(agent, callId, { answers })
+        // 逐题答案优先：每题必须带自己的选择，不能把同一句话复制给所有题。
+        const selected = answers?.length
+          ? answers
+          : items.length
+            ? items.map((item) => ({ id: item.id, selected: [text] }))
+            : [{ id: question.id || 'q', selected: [text] }]
+        const accepted = await ctx.userQuestions.answer(agent, callId, { answers: selected })
         if (accepted) return { via: 'question', answered: true }
       }
     } catch {

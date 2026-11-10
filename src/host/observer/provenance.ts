@@ -36,6 +36,38 @@ export function provenanceOf(data: Record<string, unknown> | undefined): Provena
   return { kind: 'human', cardId: '' }
 }
 
+/**
+ * 一次 user/message 算不算「一轮」的触发器。
+ *
+ * 只有 time-context / runtime-context 这类纯心跳不算轮次；`tool-jobs`、`card-answer`、
+ * `compact-checkpoint` 都会让模型真的继续干一轮，过去的判据只看 kind==='user'，
+ * 把这些回合全丢了（真实事故：`tool-jobs` 触发的回合被判「没有用户输入」）。
+ */
+export type TurnTrigger = 'human' | 'card-answer' | 'tool-jobs' | 'compact-checkpoint' | 'system'
+
+const HEARTBEAT_KINDS = new Set(['time-context', 'runtime-context'])
+const TOOL_JOB_KINDS = new Set(['tool-jobs', 'tool-job', 'jobs', 'background-job'])
+const CHECKPOINT_KINDS = new Set(['compact-checkpoint', 'compaction', 'checkpoint'])
+
+export function turnTriggerOf(data: Record<string, unknown> | undefined): TurnTrigger {
+  const source = asRecord(asRecord(data).source)
+  const kind = asString(source.kind)
+  const provenance = provenanceOf(data)
+  if (provenance.kind === 'card-answer') return 'card-answer'
+  if (provenance.kind === 'human') return 'human'
+  if (HEARTBEAT_KINDS.has(kind)) return 'system'
+  if (TOOL_JOB_KINDS.has(kind)) return 'tool-jobs'
+  if (CHECKPOINT_KINDS.has(kind)) return 'compact-checkpoint'
+  // 其它系统注入（skill 注入、续跑提示等）也会换来一轮模型回复，算触发。
+  return 'system'
+}
+
+/** 心跳不算轮次：这一类事件既不占回合，也不改变「用户最后说了什么」。 */
+export function isHeartbeat(data: Record<string, unknown> | undefined): boolean {
+  const source = asRecord(asRecord(data).source)
+  return HEARTBEAT_KINDS.has(asString(source.kind))
+}
+
 /** 从 `〔任务卡答复 c-xxx「标题」〕` 里取卡片 id。 */
 export function cardIdFromText(text: string): string {
   const match = CARD_MARK.exec(text)

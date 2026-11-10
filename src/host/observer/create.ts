@@ -9,6 +9,7 @@
 
 import type { CardDraft, CardKind, CardOrigin } from '../../shared/contract'
 import type { CreateCardOptions } from '../cards/store'
+import { sanitizeAll } from '../evidence/guard'
 
 /** 系统代发触发的回合里，judgment 车道没有现实依据。 */
 export function laneGate(
@@ -43,5 +44,11 @@ export function draftCreateOptions(
     ask: draft.ask ?? 'judgment',
     origin,
     silent: seen && lane.kind === 'info',
+    ...(draft.artifacts?.length ? { artifacts: draft.artifacts } : {}),
+    // 阶段 D：观察者草稿里的验收检查必须过服务端白名单（工作区/敏感路径/SSRF/命令前缀）。
+    ...(() => {
+      const acceptance = sanitizeAll(draft.acceptance, process.cwd())
+      return acceptance.length ? { acceptance } : {}
+    })(),
   }
 }

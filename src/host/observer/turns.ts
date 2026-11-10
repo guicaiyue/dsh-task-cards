@@ -6,10 +6,15 @@ import type { OrderSource } from '../../shared/contract'
 import { asNumber, asRecord } from '../host-api'
 import { textOf } from '../question/record'
 import type { TurnLike } from './payload'
-import { provenanceOf } from './provenance'
+import { isHeartbeat, provenanceOf, type TurnTrigger, turnTriggerOf } from './provenance'
 
 export interface TurnState {
-  hasUserInput: boolean
+  /** 这一轮有没有「轮次触发器」（真人 / 卡片答复 / 后台任务 / 压缩检查点），心跳不算。 */
+  hasTurnTrigger: boolean
+  /** 最近一次轮次触发器的类型，给兜底与记录用。 */
+  lastTrigger: TurnTrigger
+  /** 最近一个会话事件的时间：兜底判断「多久没动」。 */
+  lastEventAt: number
   lastReply: string
   usage: Record<string, number> | null
   toolCalls: number
@@ -23,22 +28,29 @@ export interface TurnState {
   lastIncomingText: string
 }
 
+/** 一轮会话素材的空状态（兜底重建 reconcile 也用这个）。 */
+export function createTurnState(): TurnState {
+  return {
+    hasTurnTrigger: false,
+    lastTrigger: 'human',
+    lastEventAt: 0,
+    lastReply: '',
+    usage: null,
+    toolCalls: 0,
+    turn: 0,
+    cwd: '',
+    turns: [],
+    lastHumanQuote: '',
+    lastIncomingKind: 'human',
+    lastIncomingCardId: '',
+    lastIncomingText: '',
+  }
+}
+
 export function stateOfTracker(tracker: Map<string, TurnState>, sessionId: string): TurnState {
   let state = tracker.get(sessionId)
   if (!state) {
-    state = {
-      hasUserInput: false,
-      lastReply: '',
-      usage: null,
-      toolCalls: 0,
-      turn: 0,
-      cwd: '',
-      turns: [],
-      lastHumanQuote: '',
-      lastIncomingKind: 'human',
-      lastIncomingCardId: '',
-      lastIncomingText: '',
-    }
+    state = createTurnState()
     tracker.set(sessionId, state)
     if (tracker.size > 500) {
       const oldest = tracker.keys().next().value
@@ -55,9 +67,11 @@ export function rememberIncoming(
   at?: number,
 ): void {
   const source = provenanceOf(data)
-  // 运行时上下文 / 其它系统注入：不占轮次，也不改变「用户最后说了什么」。
-  if (source.kind === 'system') return
-  state.hasUserInput = true
+  // 纯心跳（time-context / runtime-context）：不占轮次，也不改变「用户最后说了什么」。
+  if (isHeartbeat(data)) return
+  // 其余都算一轮：真人、卡片答复、后台任务、压缩检查点、其它系统注入都会换来模型回复。
+  state.hasTurnTrigger = true
+  state.lastTrigger = turnTriggerOf(data)
   state.lastReply = ''
   state.usage = null
   state.toolCalls = 0

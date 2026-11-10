@@ -74,6 +74,20 @@ describe('判例存储', () => {
     })
   })
 
+  it('双实例交错写：旧实例 add 不会吃掉新实例刚写的判例（热重载回归）', async () => {
+    const file = tempFile()
+    const old = new PrecedentStore(file)
+    await old.add({ title: '热重载前', choice: '批了' })
+    const fresh = new PrecedentStore(file)
+    await fresh.add({ title: '热重载后', choice: '不批' })
+    // 旧实例的缓存只有第一条；写入必须基于磁盘最新内容
+    await old.add({ title: '旧实例再加一条', choice: '先跑通' })
+    const titles = new PrecedentStore(file).list().map((row) => row.title)
+    expect(titles).toContain('热重载后')
+    expect(titles).toContain('旧实例再加一条')
+    expect(titles).toHaveLength(3)
+  })
+
   it('上限 500 条，超出丢最旧的', async () => {
     const store = new PrecedentStore(tempFile())
     for (let i = 0; i < 505; i += 1) {
