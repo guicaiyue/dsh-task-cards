@@ -169,6 +169,14 @@ export const CardSchema = z.object({
   route: RouteSchema.optional(),
   /** 阶段 E/G2：卡片级依赖（卡 id，同会话）；批准时映射为 plan.dependsOn。 */
   blockedBy: z.array(z.string()).optional(),
+  /** P1/P3：目标标识（一次用户目标一个 goalId，卡与事件都带）。 */
+  goalId: z.string().optional(),
+  /** P3：目标结果卡（做了什么/产物/验证/风险），验收不靠标题猜。 */
+  result: z.boolean().optional(),
+  /** P2：提问必须自带默认答案；10 分钟无回复按默认继续。 */
+  defaultAnswer: z.string().optional(),
+  /** P2：只有「答案不可推断 + 不可逆」才允许无限等。 */
+  blocking: z.boolean().optional(),
   /** 阶段 D：三级验收的语义票据（decision/user 级）；system 级不需要。 */
   semantic: z
     .object({
@@ -264,6 +272,12 @@ export const CardDraftSchema = z.object({
   acceptance: z.array(AcceptanceSchema).optional(),
   /** 阶段 E/G2：这张卡被哪些卡阻塞（卡 id，同会话）；批准时映射成 plan.dependsOn。 */
   blockedBy: z.array(z.string()).optional(),
+  /** P1/P3：目标标识与结果卡标记。 */
+  goalId: z.string().optional(),
+  result: z.boolean().optional(),
+  /** P2：默认答案 / 是否允许无限等。 */
+  defaultAnswer: z.string().optional(),
+  blocking: z.boolean().optional(),
 })
 export type CardDraft = z.infer<typeof CardDraftSchema>
 

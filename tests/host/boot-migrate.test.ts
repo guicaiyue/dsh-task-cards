@@ -39,9 +39,10 @@ describe('boot 接线（防「函数写了没接」）', () => {
     })
     bootKernel({ root: rootStub, cards, kernel, log: (line) => logs.push(line), migrate: true })
 
-    for (let i = 0; i < 100; i += 1) {
+    // 全量测试并行时 CPU 紧张，给归一化更宽的等待窗（3s）。
+    for (let i = 0; i < 300; i += 1) {
       if (logs.some((line) => line.startsWith('启动自检'))) break
-      await new Promise((resolve) => setTimeout(resolve, 5))
+      await new Promise((resolve) => setTimeout(resolve, 10))
     }
     expect(logs.some((line) => line.includes('审批策略归一化'))).toBe(true)
     expect(fs.readFileSync(policyFile, 'utf8')).not.toContain('"auto":[]')

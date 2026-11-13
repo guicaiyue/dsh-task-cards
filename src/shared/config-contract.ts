@@ -28,6 +28,16 @@ export const SettingsSchema = z.object({
   decisionAutoApply: z.boolean().default(true),
   /** 独立开关：只自动放行可逆的诊断性 write-code（日志/插桩/复测），不影响其它票拟。 */
   autoApproveDiagnostics: z.boolean().default(false),
+  /** 授权模式：auto=可逆仓内自批自执行（默认）；supervised=旧行为（都建卡等人批）。 */
+  autonomyMode: z.enum(['auto', 'supervised']).default('auto'),
+  /** 观察者模式：exception-only 只产例外/风险/结果（默认）；standard=旧行为（过程卡也建）。 */
+  observerMode: z.enum(['exception-only', 'standard']).default('exception-only'),
+  /** P2：超时按默认答案自动继续（默认开）；关掉则只靠 askTimeoutAction 提醒。 */
+  askAutoContinue: z.boolean().default(true),
+  /** P2：多久没答就按默认继续（分钟，默认 10）。 */
+  askTimeoutMinutes: z.number().int().positive().default(10),
+  /** 待答卡超时兜底：off 不动作 / notify 只提醒 / suggest 30 分钟后显示默认建议（绝不自动答）。 */
+  askTimeoutAction: z.enum(['notify', 'suggest', 'off']).default('off'),
   /** 水平触发排水：定时扫 pending_secretary 且无票拟的卡补派决策（默认开）。 */
   autoDecide: z.boolean().default(true),
   /** 观察者兜底：回合结束事件漏了/坏了时，定时补一次观察（默认开）。 */
@@ -46,9 +56,18 @@ export const PolicyRuleSchema = z.object({
   tools: z.array(z.string()).default([]),
   skills: z.array(z.string()).default([]),
 })
+export const AUTONOMY_TIERS = ['auto', 'ask'] as const
 export const PolicySchema = z.object({
   version: z.number().int().positive().default(1),
   roles: z.record(z.enum(POLICY_ROLES), PolicyRuleSchema),
+  /** 授权反转（P1）：auto=可逆仓内自批；ask=必须请示。 */
+  autonomy: z
+    .object({
+      mode: z.enum(['auto', 'supervised']).default('auto'),
+      auto: z.array(z.string()).default([]),
+      ask: z.array(z.string()).default([]),
+    })
+    .optional(),
 })
 export type Policy = z.infer<typeof PolicySchema>
 

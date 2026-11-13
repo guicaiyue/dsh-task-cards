@@ -4,9 +4,13 @@
 
 ## 一分钟上手
 
-**环境**：生产 dsh（13080）已禁用本插件、也不再监听本仓库；开发/测试/验证都在
-`/vol1/1000/docker/dsh-dev` 的 `dsh-dev` 容器里做（容器以可写方式直挂本仓库，容器内路径
-`/workspace/nas-plugins/dsh-task-cards`，端口 3080）。
+**环境**：源码只有一份（本仓库）。开发/测试/验证全在 `/vol1/1000/docker/dsh-dev` 的
+`dsh-dev` 容器里做（容器以可写方式直挂本仓库，容器内路径
+`/workspace/nas-plugins/dsh-task-cards`，端口 3080），容器内热部署：`dsh-dev-watch` 容器
+跑 `tsdown --watch` 重编 `lib/`，dsh 侧的 `dsh-hmr` / `dsh-client-hmr` 热重载。
+
+**宿主机 dsh（13080）不装本仓库**——不 link 源码、不监听本仓库。生产要装只装发布版：
+插件市场，或 GitHub Release 里下载的 tgz（`pnpm release` 产出）。
 
 ```bash
 # 在 dsh-dev 容器里（docker compose exec dsh bash）

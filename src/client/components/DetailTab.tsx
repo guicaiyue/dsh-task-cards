@@ -21,6 +21,10 @@ export interface DetailTabProps {
   onReworked: (card: Card, note: string) => void
   onRedecide: (card: Card) => void
   onFixAcceptance?: (card: Card, acceptance: Array<Record<string, unknown>>) => void
+  /** askTimeoutAction=suggest：阻塞超 30 分钟时显示默认建议（不自动执行）。 */
+  suggestAsk?: boolean
+  /** P2：默认答案的自动继续窗口（分钟）。 */
+  askTimeoutMinutes?: number
 }
 
 export function DetailTab(props: DetailTabProps) {
@@ -75,6 +79,8 @@ export function DetailTab(props: DetailTabProps) {
         onReworked={props.onReworked}
         onRedecide={props.onRedecide}
         {...(props.onFixAcceptance ? { onFixAcceptance: props.onFixAcceptance } : {})}
+        {...(props.suggestAsk ? { suggestAsk: true } : {})}
+        {...(props.askTimeoutMinutes ? { askTimeoutMinutes: props.askTimeoutMinutes } : {})}
       />
     </section>
   )

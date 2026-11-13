@@ -135,6 +135,66 @@ export function groupCards<C extends LifecycleCard>(cards: C[]): CardGroups<C> {
   return groups
 }
 
+/** 待答卡阻塞阈值：超过 10 分钟没答 → 会话可能被卡住。 */
+export const ASK_BLOCK_THRESHOLD_MS = 10 * 60 * 1000
+/** suggest 兜底：超过 30 分钟才把票拟建议显示成「默认建议」。 */
+export const ASK_SUGGEST_THRESHOLD_MS = 30 * 60 * 1000
+
+/** 这张卡是不是「等人答、还没答」的决策卡。 */
+export function isAskPending(card: CardOrder & { answer?: string; decision?: string }): boolean {
+  if (card.kind !== 'decision') return false
+  if (card.status !== 'open') return false
+  if (card.answer) return false
+  return card.decision !== 'notice' && card.decision !== 'closed'
+}
+
+/** 待答时长（ms）；不是待答卡返回 null。 */
+export function askWaitMs(
+  card: CardOrder & { answer?: string; decision?: string },
+  now: number,
+): number | null {
+  if (!isAskPending(card)) return null
+  return Math.max(0, now - (card.createdAt || 0))
+}
+
+/** 阻塞中的待答卡（超过阈值）。 */
+export function isBlockedAsk(
+  card: CardOrder & { answer?: string; decision?: string },
+  now: number,
+): boolean {
+  const waited = askWaitMs(card, now)
+  return waited !== null && waited >= ASK_BLOCK_THRESHOLD_MS
+}
+
+export interface BlockedAsks {
+  /** 被阻塞的会话数（同一会话多张卡算 1 个）。 */
+  count: number
+  /** 最长阻塞时长（ms）。 */
+  maxMs: number
+  cardIds: string[]
+}
+
+export function blockedAsksOf(
+  cards: readonly (CardOrder & {
+    answer?: string
+    decision?: string
+    origin?: { sessionId?: string }
+  })[],
+  now: number,
+): BlockedAsks {
+  const sessions = new Set<string>()
+  let maxMs = 0
+  const cardIds: string[] = []
+  for (const card of cards) {
+    const waited = askWaitMs(card, now)
+    if (waited === null || waited < ASK_BLOCK_THRESHOLD_MS) continue
+    cardIds.push((card as { id?: string }).id ?? '')
+    sessions.add(card.origin?.sessionId ?? '')
+    maxMs = Math.max(maxMs, waited)
+  }
+  return { count: sessions.size, maxMs, cardIds }
+}
+
 /** 「要我知晓」KPI 的时间窗：最近 24 小时。 */
 export const INFO_KPI_WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -195,6 +255,11 @@ export function cardLane(
 export function compareCards(a: CardOrder, b: CardOrder): number {
   const lane = cardLane(a) - cardLane(b)
   if (lane !== 0) return lane
+  // 阶段 F：阻塞中的待答卡置顶（会话在等它，晚一分钟都可能空转）。
+  const now = Date.now()
+  const blockedA = isBlockedAsk(a as never, now) ? 1 : 0
+  const blockedB = isBlockedAsk(b as never, now) ? 1 : 0
+  if (blockedA !== blockedB) return blockedB - blockedA
   const severity = SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity]
   if (severity !== 0) return severity
   return (b.createdAt || 0) - (a.createdAt || 0)

@@ -9,8 +9,8 @@
 // 客户端半边走 package.json 的 dsh.client + exports["./client"]，由宿主自己加载。
 // 装配细节在 wire.ts，这里只按顺序接线。
 
+import { createTurnGate } from './autonomy/gate-wire'
 import { PrecedentStore, RecordStore, SettingsStore, Store } from './cards/store'
-import { TurnGate } from './gate/gate'
 import { assembleKernel } from './kernel/assemble'
 import { bootKernel } from './kernel/boot'
 import type { PluginRoot } from './observer/trigger'
@@ -49,7 +49,7 @@ export function apply(root: PluginRoot): void {
     settings: () => settings.get(),
   })
 
-  const gate = new TurnGate({ cards, settings: () => settings.get(), log })
+  const gate = createTurnGate({ cards, settings: () => settings.get(), log, kernel })
   const deps: WireDeps = {
     cards,
     settings,

@@ -209,6 +209,10 @@ export const en: Record<string, string> = {
   caseAcceptancePath: 'File path (inside workspace)',
   caseAcceptanceCmd: 'Command (e.g. pnpm test)',
   caseAcceptanceUrl: 'URL (public https)',
+  blockedFor: 'blocked {n}m',
+  caseSuggestHint: 'Waiting {n}m; default suggestion: {suggest} (one-click, never auto-answers)',
+  caseDefaultHint:
+    'Default: {answer} (auto-continues in {minutes}m if unanswered; can change anytime)',
   caseVerdictTitle: 'Verdicts',
   caseVerdictEmpty: 'No delegated verdicts yet',
   caseEscalationTitle: 'Why escalated',

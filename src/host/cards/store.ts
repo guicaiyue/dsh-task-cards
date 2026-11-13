@@ -7,6 +7,9 @@ import type { Card, CardAction, CardKind, CardSeverity, Settings } from '../../s
 import { decisionAfter, fillDecision } from '../../shared/decision-state'
 import { DEFAULT_SETTINGS } from './defaults'
 import { DATA_FILE, JsonDoc, nextId, SETTINGS_FILE, StoreError } from './doc'
+import { normalizeAsk, normalizeKind, normalizeSeverity } from './normalize'
+import { redactCardFields, redactDetail } from './redact'
+import { withPolicySettings } from './settings-patch'
 
 export {
   DATA_DIR,
@@ -45,18 +48,11 @@ export interface CreateCardOptions {
   semantic?: Card['semantic']
   /** 阶段 E/G2：卡片级依赖（卡 id）。 */
   blockedBy?: string[]
-}
-
-function normalizeKind(value: unknown): CardKind {
-  return value === 'decision' || value === 'auto' ? value : 'info'
-}
-
-function normalizeSeverity(value: unknown): CardSeverity {
-  return value === 'high' || value === 'low' ? value : 'normal'
-}
-
-function normalizeAsk(value: unknown): Card['ask'] {
-  return value === 'permission' || value === 'clarification' ? value : 'judgment'
+  /** P1/P2/P3：目标标识、结果卡、默认答案、无限等标记。 */
+  goalId?: string
+  result?: boolean
+  defaultAnswer?: string
+  blocking?: boolean
 }
 
 function normalizeAction(value: unknown): CardAction | null {
@@ -120,6 +116,11 @@ export class Store {
     if (text.length > MAX_TITLE)
       throw new StoreError('TITLE_TOO_LONG', `标题最多 ${MAX_TITLE} 个字`)
     const now = Date.now()
+    const redacted = redactCardFields({
+      title: text,
+      detail: redactDetail(extra.detail),
+      question: extra.question,
+    })
     const action = normalizeAction(extra.action)
     const dueAt = action ? now + (Number.isFinite(action.delayMs) ? action.delayMs : 600000) : null
     // 免打扰只对「不需要动作」的卡成立：带 action 的卡还要到点执行，状态得是 scheduled。
@@ -127,8 +128,8 @@ export class Store {
     const source = extra.source === 'agent' ? 'agent' : 'human'
     const card: Card = {
       id: nextId('c'),
-      title: text,
-      detail: typeof extra.detail === 'string' ? extra.detail.slice(0, 1000) : '',
+      title: redacted.title ?? text,
+      detail: redacted.detail ?? '',
       kind: normalizeKind(extra.kind),
       severity: normalizeSeverity(extra.severity),
       // open 未处理 / acknowledged 已读 / scheduled 已排自动动作 / done 已完成 / dismissed 忽略
@@ -138,13 +139,17 @@ export class Store {
       source,
       // 两种交互：question = 模型提问把对话卡住了；reply = 一轮回复结束后的记录。
       interaction: extra.interaction === 'question' ? 'question' : 'reply',
-      question: (extra.question as Card['question']) ?? null,
+      question: (redacted.question as Card['question']) ?? null,
       ask: normalizeAsk(extra.ask),
       origin: (extra.origin as Card['origin']) ?? null,
       ...(extra.artifacts?.length ? { artifacts: extra.artifacts.slice(0, 20) } : {}),
       ...(extra.acceptance?.length ? { acceptance: extra.acceptance } : {}),
       ...(extra.semantic ? { semantic: extra.semantic } : {}),
       ...(extra.blockedBy?.length ? { blockedBy: extra.blockedBy } : {}),
+      ...(extra.goalId ? { goalId: extra.goalId } : {}),
+      ...(extra.result ? { result: true } : {}),
+      ...(extra.defaultAnswer ? { defaultAnswer: extra.defaultAnswer } : {}),
+      ...(extra.blocking ? { blocking: true } : {}),
       ...(extra.planId ? { planId: extra.planId } : {}),
       advice: null,
       silent,
@@ -190,7 +195,11 @@ export class Store {
   }
 
   /** 统一的改状态入口：所有变更都留一条事件，且永远基于磁盘最新内容改。 */
-  async patch(id: string, changes: Partial<Card>, event?: string): Promise<Card> {
+  async patch(
+    id: string,
+    changes: Partial<Card>,
+    event?: string | { type: string; meta?: Record<string, unknown> },
+  ): Promise<Card> {
     return this.#doc.mutate((current) => {
       const card = requireCard(current, id)
       Object.assign(card, changes, { updatedAt: Date.now() })
@@ -198,7 +207,11 @@ export class Store {
       if (changes.decision) card.decision = changes.decision
       else if (!card.decision) fillDecision(card)
       else if (changes.deliveryState || changes.status) card.decision = decisionAfter(card)
-      card.events.push({ at: Date.now(), type: event || 'updated' })
+      card.events.push({
+        at: Date.now(),
+        type: typeof event === 'string' ? event : event?.type || 'updated',
+        ...(typeof event === 'object' && event?.meta ? { meta: event.meta } : {}),
+      })
       return { value: current, result: { ...card } }
     })
   }
@@ -261,7 +274,6 @@ export class SettingsStore {
       Number.isFinite(patch.decisionPrecedentLimit)
     )
       next.decisionPrecedentLimit = Math.max(0, Math.trunc(patch.decisionPrecedentLimit))
-    // 自动执行开关：面板关掉以后，任何票拟都不许代跑。
     if (typeof patch.decisionAutoApply === 'boolean')
       next.decisionAutoApply = patch.decisionAutoApply
     if (typeof patch.autoApproveDiagnostics === 'boolean')
@@ -271,8 +283,9 @@ export class SettingsStore {
       next.receiptTimeoutMs = Math.max(10_000, Math.trunc(patch.receiptTimeoutMs))
     if (patch.turnGate === 'off' || patch.turnGate === 'high-risk' || patch.turnGate === 'all')
       next.turnGate = patch.turnGate
-    await this.#doc.write(next)
-    return next
+    const withPolicy = withPolicySettings(next, patch)
+    await this.#doc.write(withPolicy)
+    return withPolicy
   }
 }
 

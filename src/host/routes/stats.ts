@@ -11,8 +11,11 @@ import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { Card } from '../../shared/contract'
+import { blockedAsksOf } from '../../shared/state'
+import { gateStats, unaccountedOf } from '../gate/gate-stats'
 import type { HttpRequestLike, HttpResponseLike } from '../http'
 import { sendJson } from '../http'
+import { noiseOf } from '../stats/noise'
 import { countSessionTurns } from '../stats/turns'
 import type { RouteDeps } from './deps'
 
@@ -55,6 +58,60 @@ function countApprovals(journalDir: string, synthetic: Set<string>, present: Set
   return total
 }
 
+/** 数 journal 里的 autonomy:auto 事件（P1 自主执行审计）。 */
+function countAutonomy(journalDir: string): number {
+  let total = 0
+  try {
+    for (const entry of readdirSync(journalDir)) {
+      if (!entry.endsWith('.jsonl')) continue
+      for (const line of readFileSync(path.join(journalDir, entry), 'utf8').split('\n')) {
+        if (line.includes('autonomy:auto')) total += 1
+      }
+    }
+  } catch {
+    return 0
+  }
+  return total
+}
+
+/** 结果/过程/覆盖率等派生指标（从 kpiOf 拆出，控制函数行数）。 */
+function extraStatsOf(
+  cards: readonly Card[],
+  decision: readonly Card[],
+  interventions: number,
+  approvals: number,
+): Record<string, unknown> {
+  const withAcceptance = decision.filter((card) => (card.acceptance?.length ?? 0) > 0)
+  const resultCards = cards.filter((card) => card.result === true)
+  const processCards = cards.filter(
+    (card) => card.kind === 'info' && !card.result && card.severity !== 'high',
+  )
+  const goals = new Set(decision.map((card) => card.goalId || card.origin?.sessionId || ''))
+  const blocked = blockedAsksOf(cards as never, Date.now())
+  const unknownCards = cards.filter(
+    (card) => card.deliveryState === 'unknown' || card.decision === 'stale',
+  )
+  const unknownToHuman = unknownCards.filter(
+    (card) =>
+      card.waitReason === 'awaiting-user-escalation' ||
+      card.waitReason === 'retry-exhausted' ||
+      card.kind === 'decision',
+  )
+  return {
+    acceptanceCards: withAcceptance.length,
+    acceptanceCoverage: ratio(withAcceptance.length, decision.length),
+    blockedAsks: blocked.count,
+    maxBlockedMs: blocked.maxMs,
+    goals: goals.size,
+    results: resultCards.length,
+    resultsPerGoal: ratio(resultCards.length, Math.max(goals.size, 1)),
+    processCards: processCards.length,
+    unknown: unknownCards.length,
+    unknownToHuman: unknownToHuman.length,
+    unknownToHumanRate: ratio(unknownToHuman.length, unknownCards.length),
+  }
+}
+
 function kpiOf(cards: readonly Card[], turns: number, approvals = 0) {
   const decision = cards.filter((card) => card.kind === 'decision' && card.decision !== 'notice')
   // wait 率分母 = 有票拟的 decision；升级率分母 = 非 destructive 的 decision（docs 口径）。
@@ -83,12 +140,11 @@ function kpiOf(cards: readonly Card[], turns: number, approvals = 0) {
       card.waitReason === 'retry-exhausted' ||
       card.kind === 'decision',
   )
-  const withAcceptance = decision.filter((card) => (card.acceptance?.length ?? 0) > 0)
+  const extra = extraStatsOf(cards, decision, interventions, approvals)
   return {
+    ...extra,
     cards: cards.length,
     decision: decision.length,
-    acceptanceCards: withAcceptance.length,
-    acceptanceCoverage: ratio(withAcceptance.length, decision.length),
     advised: advised.length,
     reversible: reversible.length,
     notices: notices.length,
@@ -133,6 +189,7 @@ export function createStatsHandler(deps: RouteDeps) {
     return sendJson(res, 200, {
       ok: true,
       generatedAt: Date.now(),
+      autonomyAuto: countAutonomy(deps.kernel.journal.dir),
       dataSource: {
         cardsFile: deps.cards.file,
         cardsSha256,
@@ -142,6 +199,10 @@ export function createStatsHandler(deps: RouteDeps) {
         sessions,
       },
       turns,
+      // 自噪声：工具问得值不值（ask 有效率）+ 账本里有多少只是记录（zeroAction）。
+      noise: noiseOf(cards, deps.kernel.asks.list()),
+      // 零静默：拒绝了几次、ask 的三种去向各几次、还剩几条没去向。
+      silence: { ...gateStats().read(), unaccounted: unaccountedOf(gateStats().read()) },
       metric: '同幂等键不重复派发（at-least-once，不承诺 exactly-once）',
       groups: {
         all: kpiOf(cards, turns, approvalsAll),

@@ -25,6 +25,8 @@ function ratesText(t: Translate, stats: StatsView | null): string {
     noticePerTurn: num(server.noticePerTurn),
     unknownRate: pct(server.unknownToHumanRate),
     acceptanceCoverage: pct(server.acceptanceCoverage),
+    blockedAsks: num(server.blockedAsks),
+    blockedMaxMin: Math.round((stats?.groups.real.maxBlockedMs ?? 0) / 60_000),
     turns: stats?.turns ?? 0,
     sha: (stats?.dataSource.cardsSha256 ?? '').slice(0, 6),
   })

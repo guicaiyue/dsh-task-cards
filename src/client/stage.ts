@@ -13,6 +13,7 @@ export interface StageView {
 }
 
 export type WorkbenchFilter =
+  | 'results'
   | 'all'
   | 'pending'
   | 'escalated'
@@ -23,6 +24,7 @@ export type WorkbenchFilter =
   | 'closed'
 
 export const FILTERS: WorkbenchFilter[] = [
+  'results',
   'all',
   'pending',
   'escalated',
@@ -147,6 +149,7 @@ export function filterCards(cards: readonly Card[], filter: WorkbenchFilter): Ca
   if (filter === 'attention') return cards.filter((card) => laneOf(card) === 'attention')
   if (filter === 'pending') return cards.filter((card) => laneOf(card) === 'decision')
   if (filter === 'escalated') return cards.filter((card) => laneOf(card) === 'escalated')
+  if (filter === 'results') return cards.filter((card) => card.result === true)
   // 「通知」= info + auto 两条车道：这两个 lane 之前没有任何过滤器，只能在「全部」里看到。
   if (filter === 'notice')
     return cards.filter((card) => {
@@ -165,6 +168,7 @@ export function filterCounts(cards: readonly Card[]): Record<WorkbenchFilter, nu
     pending: 0,
     escalated: 0,
     notice: 0,
+    results: 0,
     running: 0,
     verifying: 0,
     attention: 0,
@@ -172,6 +176,7 @@ export function filterCounts(cards: readonly Card[]): Record<WorkbenchFilter, nu
   }
   for (const card of cards) {
     out.all += 1
+    if (card.result) out.results += 1
     const lane = laneOf(card)
     if (lane === 'closed') out.closed += 1
     else if (lane === 'attention') out.attention += 1

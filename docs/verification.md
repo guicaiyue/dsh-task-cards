@@ -106,3 +106,10 @@ bsk 驱动的 Chromium 不在宿主命名空间，它的 `127.0.0.1` 不是 dsh�
 - 面板分道：等秘书批 / 等升级 / 执行中 / 验收中 / 已结束 + 通知折叠；
 - 详情「决定票」可展开（authority / policyVersion / confidence / rationale / evidenceRefs）；
 - 六项 KPI 文本行：`六项：delegated … / override … / 升级 … / wait … / 卡 … 张/回合 / 干预 … 次/回合（回合数 N，来自真实 origin.turn）`。
+
+## 运维事实：gate / autonomy 改动必须重启容器再验（2026-11-11）
+
+- `src/host/gate/**` 与 `src/host/autonomy/**` 的改动**HMR 重载不生效**（监听器/单例按宿主作用域注册），改完必须 `docker compose restart dsh`，否则会出现「同一份代码 beforeRef 为空 / 旧行为仍在」的假象；
+- 验证顺序：改代码 → `pnpm build` → `docker compose restart dsh` → 重跑真机探针 → 看 journal/`/stats`；
+- 环境事实：agent 跑在容器内，宿主路径 `/vol1/1000/开发/NAS/story` 在容器里不存在，只有挂载点 `/workspace/story`；探针 `cd` 失败先确认是不是路径问题，不是插件问题；
+- 审计事件 `autonomy:auto` 的 `meta.policyVersion` 来自 `approval-policy.json` 的实际 version（不是常量 1）；`meta.beforeRef/rollback` 来自 exec cwd 的 git 快照。

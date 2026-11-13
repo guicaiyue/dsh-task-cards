@@ -11,6 +11,9 @@ lib/
 coverage/
 *.log
 
+# 发布产物（`pnpm release` 打包出的 tgz，Release 上有副本，仓库里不留）
+*.tgz
+
 # 本地个人配置（运行时数据在 $DSH_HOME/dsh-task-cards/，不在本目录）
 *.local.json
 .env

@@ -5,6 +5,7 @@
 import path from 'node:path'
 
 import type { Card } from '../../shared/contract'
+import { AskStore } from '../asks/store'
 import type { Store } from '../cards/store'
 import { EvidenceStore, evidenceDirOf } from '../evidence/store'
 import { ReceiptTracker } from '../execution/receipt'
@@ -54,6 +55,7 @@ export function assembleKernel({ cards, log, getCtx, settings }: AssembleOptions
   const dataDir = path.dirname(cards.file)
   // 阶段 A 三账分离：plans.json 与 approval-policy.json（后者刻意与工具白名单 policy.json 不同名）。
   const plans = new PlansStore(path.join(dataDir, 'plans.json'))
+  const asks = new AskStore(path.join(dataDir, 'asks.json'))
   const approvalPolicy = new ApprovalPolicyStore(path.join(dataDir, APPROVAL_POLICY_FILE))
   const todo = new TodoStore({ dir: todoDirOf(cards.file), log })
   const evidence = new EvidenceStore({ dir: evidenceDirOf(cards.file), log })
@@ -79,6 +81,7 @@ export function assembleKernel({ cards, log, getCtx, settings }: AssembleOptions
   const kernel: KernelRuntime = {
     journal,
     plans,
+    asks,
     approvalPolicy,
     todo,
     evidence,

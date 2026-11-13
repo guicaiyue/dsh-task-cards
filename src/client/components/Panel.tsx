@@ -142,6 +142,8 @@ function Detail({ t, state }: { t: Translate; state: PanelState }) {
       onAction={actions.onAction}
       onAdopt={actions.onAdopt}
       onFixAcceptance={actions.onFixAcceptance}
+      suggestAsk={state.settings?.askTimeoutAction === 'suggest'}
+      askTimeoutMinutes={state.settings?.askTimeoutMinutes ?? 10}
       onReworked={actions.onReworked}
       onRedecide={actions.onRedecide}
     />

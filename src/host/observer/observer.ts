@@ -8,7 +8,7 @@
 import type { Card, ObserverRecord } from '../../shared/contract'
 import type { RecordStore, SettingsStore, Store } from '../cards/store'
 import type { HostRuntime, Log } from '../host-api'
-import { draftCreateOptions } from './create'
+import { classifyDraft, draftCreateOptions } from './create'
 import { buildPayload } from './payload'
 import {
   type ObserverTurnInput,
@@ -175,7 +175,15 @@ export class Observer {
       typeof input.seenMark === 'number' && this.#seenSince
         ? this.#seenSince(input.originSessionId, input.seenMark)
         : false
-    for (const draft of last.cards || []) {
+    const mode = this.#settings.get().observerMode ?? 'exception-only'
+    for (const raw of last.cards || []) {
+      const verdict = classifyDraft(raw, mode)
+      if (!verdict.keep) {
+        this.#log(`观察者（exception-only）：过程卡不建，转时间线 — ${raw.title}`)
+        continue
+      }
+      // exception-only 下命中的「结果」类：显式标 result=true，验收不靠标题猜。
+      const draft = verdict.result && !raw.result ? { ...raw, result: true } : raw
       const origin = {
         sessionId: input.originSessionId,
         turn: input.turn,

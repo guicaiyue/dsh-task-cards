@@ -10,12 +10,15 @@ import { Decision } from './decision/runner'
 import type { TurnGate } from './gate/gate'
 import type { HostRuntime, Log } from './host-api'
 import { asRecord, asString } from './host-api'
+import { runAskTimers } from './kernel/ask-timers'
+import { sweepBlockedAsks } from './kernel/blocked-asks'
 import type { KernelRuntime } from './kernel/runtime'
 import { Observer } from './observer/observer'
 import { registerObserverPreset } from './observer/preset'
 import { SeenTracker } from './observer/seen'
 import { observeTurns, type PluginRoot } from './observer/trigger'
 import type { Presence } from './presence'
+import { answerQuestion } from './question/answer'
 import { installQuestionHook } from './question/hook'
 import { captureQuestion, recordChatAnswer, recordQuestionCard } from './question/record'
 import { registerRoutes, type WebServerLike } from './routes/register'
@@ -150,6 +153,15 @@ export function wireDecision(root: PluginRoot, deps: WireDeps): Decision {
     } catch (err) {
       log(`决策排水失败：${(err as Error)?.message || String(err)}`)
     }
+    runAskTimers({
+      cards,
+      asks: deps.kernel.asks,
+      journal: deps.kernel.journal,
+      approvalPolicy: deps.kernel.approvalPolicy,
+      settings: () => settings.get(),
+      runtime: () => state.runtime,
+      log,
+    })
   }, 30_000)
   timer.unref?.()
   root.effect(() => () => clearInterval(timer), 'dsh-task-cards: decision drain')

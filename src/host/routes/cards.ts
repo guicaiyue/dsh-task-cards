@@ -22,6 +22,11 @@ export function createCardsHandler({ cards }: RouteDeps) {
     )
     const card = await cards.create(body.title, {
       ...(acceptance.length ? { acceptance } : {}),
+      // P2：手工/外部调试卡也可带默认答案（超时自动继续与真实提问同一套字段）。
+      ...(typeof body.defaultAnswer === 'string' && body.defaultAnswer.trim()
+        ? { defaultAnswer: String(body.defaultAnswer).slice(0, 2000) }
+        : {}),
+      ...(body.blocking === true ? { blocking: true } : {}),
       detail: body.detail,
       kind: body.kind,
       severity: body.severity,

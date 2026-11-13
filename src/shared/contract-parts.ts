@@ -90,6 +90,8 @@ export const CardEventSchema = z.object({
   at: z.number(),
   type: z.string(),
   via: z.string().optional(),
+  /** 事件附加信息（如 ask:blocked 的 durationMs/sessionId）。 */
+  meta: z.record(z.string(), z.unknown()).optional(),
 })
 export type CardEvent = z.infer<typeof CardEventSchema>
 

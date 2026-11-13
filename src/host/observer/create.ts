@@ -36,7 +36,8 @@ export function draftCreateOptions(
           1000,
         )
       : draft.detail,
-    kind: lane.kind,
+    // P3：结果卡固定 info/notice（面板「结果」车道），不参与决定状态机。
+    kind: draft.result ? 'info' : lane.kind,
     severity: draft.severity,
     // 只有自动卡才允许带「到点替用户发一句话」的动作；决策/通知卡带 action 会被扫描器误当成自动执行。
     action: lane.kind === 'auto' ? draft.action : null,
@@ -53,5 +54,43 @@ export function draftCreateOptions(
       const acceptance = sanitizeAll(draft.acceptance, process.cwd())
       return acceptance.length ? { acceptance } : {}
     })(),
+    // P1/P3：一次用户目标一个 goalId；结果卡显式标记（验收不靠标题猜）。
+    goalId: draft.goalId || `${origin.sessionId}:${origin.turn ?? 0}`,
+    ...(draft.result ? { result: true } : {}),
+    ...(draft.defaultAnswer ? { defaultAnswer: draft.defaultAnswer } : {}),
+    ...(draft.blocking ? { blocking: true } : {}),
   }
+}
+
+/** 例外/风险/结果三类之外的过程卡，在 exception-only 模式下不建卡（过程进时间线）。 */
+const RISK = /证书|到期|缺表|缺列|数据丢失|风险|阻塞|失败|不可用|安全|漏洞|回滚|告警|中断/i
+const RESULT = /完成|已修|已上线|结果|产物|交付|发布成功|验证通过/i
+
+export interface DraftVerdict {
+  keep: boolean
+  /** 结果卡（completed goal）：即使草稿没标 result 也要补 true。 */
+  result: boolean
+}
+
+export function classifyDraft(
+  draft: CardDraft,
+  mode: 'exception-only' | 'standard' | undefined,
+): DraftVerdict {
+  const resolved = mode ?? 'exception-only'
+  if (resolved !== 'exception-only') return { keep: true, result: Boolean(draft.result) }
+  const text = `${draft.title} ${draft.detail} ${draft.reason}`
+  if (draft.result) return { keep: true, result: true }
+  if (draft.severity === 'high' || draft.kind === 'decision') {
+    return { keep: true, result: false }
+  }
+  if (RESULT.test(text)) return { keep: true, result: true }
+  if (RISK.test(text)) return { keep: true, result: false }
+  return { keep: false, result: false }
+}
+
+export function shouldKeepDraft(
+  draft: CardDraft,
+  mode: 'exception-only' | 'standard' | undefined,
+): boolean {
+  return classifyDraft(draft, mode).keep
 }

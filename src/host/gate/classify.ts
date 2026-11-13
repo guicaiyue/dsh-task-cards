@@ -5,10 +5,20 @@
 //   - 库名 `-d story` 不能匹配 `-d story_dev`（`_` 是词字符，`\b` 天然挡住）。
 // 每条命中都带 `rule:<名字>` / `prod-db:<片段>`，写进卡上的 gate.reasons 供审计。
 
-import { createHash } from 'node:crypto'
 import { isAbsolute, resolve } from 'node:path'
 
 import type { Effect } from '../../shared/contract'
+import {
+  DEV_TCP,
+  devContainerReason,
+  gitPushReason,
+  isEnvTemplate,
+  looksLikeSecretContent,
+  reversibleWriteEffect,
+  sqlDestructiveReason,
+  templateOnlySecretWrite,
+} from './converge'
+import { hashOf, identityOf as makeIdentity } from './identity'
 import { RULES } from './rules'
 import { nestedCommands, SHELL_DESTRUCTIVE, splitSegments } from './segments'
 
@@ -36,6 +46,10 @@ export interface GateDecision {
 
 const COMMAND_TOOLS = new Set(['bash', 'pwsh', 'sh', 'shell', 'terminal_open', 'terminal_send'])
 const WRITE_TOOLS = new Set(['edit', 'write', 'str_replace_editor'])
+
+/** 真正把 SQL 交给数据库客户端执行的命令（文件内容里的 SQL 不算）。 */
+const SQL_CLIENT =
+  /\b(psql|mysql|mariadb|sqlite3)\b|\bdocker\s+(?:exec|compose\s+exec)\b[^\n]*\b(psql|mysql|mariadb|sqlite3)\b/i
 
 const DDL_DML = /\b(alter|create|drop|truncate|insert|update|delete|grant|revoke)\b/i
 const SPEND = /\b(stripe|paypal|charge|purchase|billing)\b|支付|下单|付款|购买|充值|扣费/i
@@ -66,10 +80,6 @@ export function isWriteTool(tool: string): boolean {
   return WRITE_TOOLS.has(tool) || tool.startsWith('mcp__')
 }
 
-function hashOf(identity: string): string {
-  return createHash('sha256').update(identity).digest('hex').slice(0, 32)
-}
-
 /**
  * 语义身份：tool + effect + 归一化目标。
  *
@@ -78,10 +88,6 @@ function hashOf(identity: string): string {
  * （真实 bug：同一 target 两张卡、两个 argHash）。description 等不影响执行语义，
  * 不该进身份。
  */
-function identityOf(tool: string, effect: string, target: string): string {
-  return `${tool}\u0000${effect}\u0000${target}`
-}
-
 function isInside(cwd: string, target: string): boolean {
   if (!target.startsWith('/')) return true // 相对路径按工作区内算
   if (!cwd) return false
@@ -142,30 +148,6 @@ function prodContainerOf(command: string): string | null {
   return /^prod-[a-z0-9-]+$/.test(name) ? name : null
 }
 
-/** 停/重启/删开发容器 → 会把正在跑的会话打死。启动（up/start）不算。 */
-function devContainerReason(command: string): string | null {
-  const compose = /\bdocker\s+compose\s+(?:-f\s+\S+\s+)?(down|restart)\b/.exec(command)
-  if (compose) {
-    const touched = /\b(dsh-dev|story-[a-z0-9-]+)\b/.exec(command)
-    return touched ? `dev-container:compose-${compose[1]}:${touched[0]}` : null
-  }
-  const direct = /\bdocker\s+(stop|restart|rm)\b/.exec(command)
-  if (!direct) return null
-  const touched = /\b(dsh-dev|story-[a-z0-9-]+)\b/.exec(command)
-  return touched ? `dev-container:${direct[1]}:${touched[0]}` : null
-}
-
-/** git push：推 main/master（含 --force）拦，推特性分支放行。 */
-function gitPushReason(command: string): string | null {
-  const push = /\bgit\s+push\b/.exec(command)
-  if (!push) return null
-  const force = /\s(--force|-f)\b/.test(command)
-  const target = /\b(main|master)\b/.exec(command)
-  if (target) return `git-push-${target[1]}${force ? ':force' : ''}`
-  if (force) return 'git-push:force'
-  return null
-}
-
 /** rm 递归删：删到工作区外 / 工作区根本身才拦。 */
 function absoluteOf(cwd: string, target: string): string {
   return isAbsolute(target) ? target : resolve(cwd, target)
@@ -196,7 +178,7 @@ function redirectReason(command: string, cwd: string, workspace: string): string
   const redirect = /(?:^|\s)>{1,2}\s*(\/[^\s'"]+)/.exec(command)
   if (redirect?.[1]) targets.push(redirect[1])
   for (const target of targets) {
-    if (/^\/(dev\/null|tmp\/|proc\/)/.test(target)) continue
+    if (/^\/(dev\/null|dev\/tcp|dev\/udp|tmp\/|proc\/)/.test(target)) continue
     if (!isInside(workspace, absoluteOf(cwd, target))) return `write-outside:${target}`
   }
   return null
@@ -238,12 +220,12 @@ export function classifyTurnCall(
   }
 
   if (command) {
-    // 复合命令：分段 → 跟踪 cd → 每段单独判；任一段命中即拦（reason 带段号）。
     let segCwd = cwd
-    // 跨段模式（curl|sh、docker … 之类）先按整串判一次，避免被分段拆散。
     for (const rule of RULES) {
       if (rule.pattern.test(command)) hit(rule.effect, `rule:${rule.name}:whole`)
     }
+    const wholeSql = sqlDestructiveReason(command)
+    if (wholeSql) hit('destructive', wholeSql)
     const segments = splitSegments(command)
     for (const [index, segment] of segments.entries()) {
       const cd = /^cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/.exec(segment)
@@ -258,34 +240,54 @@ export function classifyTurnCall(
           if (nestedHit) hit(nestedHit.effect, `${nestedHit.reason}:nested#${index + 1}`)
         }
       }
-      // 跨段规则（如 `curl … | sh`）在整串上先判一次。
       const wholeHit = segmentHit(segment, segCwd, cwd)
       const segHit = wholeHit
       if (segHit) hit(segHit.effect, `${segHit.reason}:seg#${index + 1}`)
       for (const rule of RULES) {
         if (rule.pattern.test(segment)) hit(rule.effect, `rule:${rule.name}:seg#${index + 1}`)
       }
+      const sql = sqlDestructiveReason(segment)
+      if (sql) hit('destructive', `${sql}:seg#${index + 1}`)
       if (SPEND.test(segment)) hit('spend', `rule:spend:seg#${index + 1}`)
     }
-    // DELETE 没有 WHERE 是全表删：单独判（有多条语句时宁可漏也不误伤）。
-    if (/\bdelete\s+from\b/i.test(command) && !/\bwhere\b/i.test(command))
-      hit('destructive', 'rule:delete-no-where')
     if (SPEND.test(command)) hit('spend', 'rule:spend')
-    if (SECRET_PATH.test(command) && /\b(tee|cat\s*>|>|cp|mv|chmod)\b/.test(command))
-      hit('write-code', 'rule:secret-path')
+    if (SECRET_PATH.test(command) && / >|\b(tee|cat\s*>|cp|mv|chmod)\b/.test(command)) {
+      if (templateOnlySecretWrite(command)) reasons.push('allow:env-template')
+      else hit('write-code', 'rule:secret-path')
+    }
+    if (DEV_TCP.test(command)) reasons.push('allow:dev-tcp-probe')
   }
 
   if (path && (WRITE_TOOLS.has(input.tool) || input.tool.startsWith('mcp__'))) {
-    if (SECRET_PATH.test(path)) hit('write-code', 'rule:secret-path')
+    const content = String(input.args?.content ?? input.args?.new_str ?? input.args?.text ?? '')
+    if (SECRET_PATH.test(path)) {
+      if (isEnvTemplate(path) && !looksLikeSecretContent(content)) {
+        reasons.push('allow:env-template')
+      } else if (isEnvTemplate(path)) {
+        hit('write-code', 'rule:secret-env-content')
+      } else {
+        hit('write-code', 'rule:secret-path')
+      }
+    }
     if (!isInside(cwd, path)) hit('write-code', 'rule:write-outside')
+    else if (!reasons.includes('rule:secret-path')) {
+      effect = 'write-code'
+      reasons.push('allow:reversible-write')
+    }
   }
   if (SPEND.test(JSON.stringify(input.args ?? {}))) hit('spend', 'rule:spend')
 
+  const reversible = reversibleWriteEffect(command)
+  if (reversible) {
+    effect = reversible
+    reasons.push('allow:reversible-write')
+  }
   const allMode = mode === 'all' && (isWriteTool(input.tool) || Boolean(command) || Boolean(path))
-  const gate = mode !== 'off' && (effect !== null || allMode)
+  const blocking = reasons.some((reason) => !reason.startsWith('allow:'))
+  const gate = mode !== 'off' && ((effect !== null && blocking) || allMode)
   const finalEffect = effect ?? 'read'
   const target = (command || path).replace(/\s+/g, ' ').trim().slice(0, 120)
-  const identity = identityOf(input.tool, finalEffect, target)
+  const identity = makeIdentity(input.tool, finalEffect, target)
   return {
     gate,
     effect: finalEffect,

@@ -20,6 +20,12 @@ export const POLICY_FILE = path.join(
 
 export const DEFAULT_POLICY: Policy = {
   version: 1,
+  // 判据：能 git 回退的自己干，不能回退的问一句（详见 delegation-pivot §3）。
+  autonomy: {
+    mode: 'auto',
+    auto: ['read', 'write-code-inside-workspace', 'git-commit-non-main', 'dev-shot-container'],
+    ask: ['prod-db', 'release', 'spend', 'irreversible-delete', 'git-push-main'],
+  },
   roles: {
     observer: { tools: [], skills: [] },
     worker: { tools: ['*'], skills: ['*'] },
@@ -42,7 +48,22 @@ export function readPolicy(file: string = POLICY_FILE): Policy {
         skills: Array.isArray(value.skills) ? value.skills.map(String) : [],
       }
     }
-    return { version: typeof raw.version === 'number' ? raw.version : 1, roles: normalized }
+    const autonomy = raw.autonomy as
+      | { mode?: 'auto' | 'supervised'; auto?: string[]; ask?: string[] }
+      | undefined
+    return {
+      version: typeof raw.version === 'number' ? raw.version : 1,
+      roles: normalized,
+      ...(autonomy
+        ? {
+            autonomy: {
+              mode: autonomy.mode === 'supervised' ? 'supervised' : 'auto',
+              auto: Array.isArray(autonomy.auto) ? autonomy.auto.map(String) : [],
+              ask: Array.isArray(autonomy.ask) ? autonomy.ask.map(String) : [],
+            },
+          }
+        : {}),
+    }
   } catch {
     return { ...DEFAULT_POLICY, roles: { ...DEFAULT_POLICY.roles } }
   }

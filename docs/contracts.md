@@ -101,6 +101,78 @@ contract.ts 的 CardDraftSchema 形状 → 落盘成 Card
 - **delegated 可审计 + override**：`Card.route={decider,reason,threshold,policyVersion,at}` 落盘；delegated 票同时写 `plans.json` 的 `verdicts[]`（`Verdict` 自带 `policyVersion` 字段：authority/confidence/rationale/evidenceRefs/at 齐备），`GET /case?id=` 返回 `verdicts[]{authority,policyVersion,confidence,rationale,evidenceRefs,at}` 供面板详情展开；面板 override 走 `/action {action:'override'}`（要面板令牌），写两条事件 `delegated:overridden` / `delegated:override-ack` 并把 `authority` 改回 user——补偿语义，不回滚旧状态。
 - **KPI**：`kpiOf` 只用于面板当前卡片的即时计数（`pending / escalated / overridden / delegated / running / verifying / attention`，escalated 独立、不进 pending）；所有比率类指标以 `/stats.groups.real` 为唯一数据源（见下文「/stats 口径」）。
 
+## 闸门收敛（阶段 F，task-11）
+
+- **`.env` 模板放行**：`.env.example|sample|template`、`*.env.example` 等模板写入放行（`allow:env-template`）；真实 `.env`/`.env.prod` 仍拦；模板里出现像真实密钥的 `KEY/TOKEN/SECRET/PASSWORD=长随机值` 或 PEM 头 → 仍拦（`rule:secret-env-content`）；
+- **`/dev/tcp` 探针**：命令里出现 `/dev/tcp/<host>/<port>`（及 `/dev/udp/`）不当作写文件，放行并记 `allow:dev-tcp-probe`；其它重定向仍按原规则（工作区外 `/etc` 等照拦，`/tmp` 仍按既有豁免）；
+- **dev 辅助容器**：`story-shot-*` / `story-probe-*` / `story-tmp-*` 的 `docker stop/rm` 放行（一次性辅助容器，无常驻服务/数据卷/端口）；`story-dev-postgres`、`dsh-dev`、`postgres`、`prod-*` 仍拦；规则与注释在 `classify.ts::devContainerReason`；
+- 放行/拦截都带原因（`allow:*` 或 `rule:*`），便于审计。
+
+## M8：edit/write 仓内写审计（缺陷修复）
+
+- `classifyTurnCall` 对工作区内 `edit`/`write` 工具判 `effect='write-code'`（reason `allow:reversible-write`，不 gate）；
+- `auditAllowedWrite` 对任何非 gate 且 effect≠read 的调用写 `autonomy:auto`（含 edit/write），meta 带 `goalId`（会话作用域）、`beforeRef`、`rollback`、`policyVersion`、`reason`；
+- 工作区外 edit 仍 `write-outside` → 进 ask 通道；测试覆盖 edit/write 仓内 1 条审计 + 0 卡，区外仍拦。
+
+## 目标级结果（P3，task-15）
+
+- **一目标一结果**：观察者完成目标时只产一条 `result:true` 卡（强制 `kind=info/notice`，不参与决定状态机）；正文固定四段：做了什么 3–5 条 / 产物与位置（文件/链接/sha256/截图）/ 怎么验证 / 风险与未完成（无则「无」）；
+- **过程进时间线**：探索/命令/中间结论在 exception-only 下不建卡（`shouldKeepDraft` 丢弃并记日志）；
+- **例外仍独立**：阻塞问题卡、不可逆许可卡（ask 通道）、风险卡（severity=high）；
+- **可观测**：`/stats` 增加 `results`、`resultsPerGoal`、`processCards`（过程卡应为 0）；
+- **面板**：新增「结果」车道（按 `goalId` 分组），只看 `result=true` 的卡。
+
+## 问题自带默认 + 超时继续（P2，task-14）
+
+- **卡字段**：`defaultAnswer`（提问必须给默认答案）、`blocking`（只有「答案不可推断 + 不可逆」才允许无限等；面板标红不自动继续）；
+- **超时继续**：`Settings.askAutoContinue`（默认 on）、`askTimeoutMinutes`（默认 10）；`asks/auto-continue.ts::sweepAutoContinue` 每 30s 扫待答 decision 卡，超时后把 defaultAnswer 投回 origin 会话（`answeredVia='auto'`），写 `ask:auto-continued`（meta: timeoutMs/defaultAnswer/auto/waitedMs），结果里注明「已按默认执行」；
+- **ask 通道**：非 blocking 且带默认答案的 ask 条目超时同样自动继续，`asks.answer(id, defaultAnswer, true)` + `ask:auto-continued` 审计；
+- **blocking 过期收尾（2026-11-12 修）**：`asks/auto-continue.ts::expireBlockingAsks` 每 30s 扫一次，
+  `blocking=true` 且等够 `STALE_BLOCKING_MS`（6 小时）的条目按 `defaultAnswer` 收尾并写 `ask:expired`
+  （meta: waitedMs/answer/expired）。不可逆动作的默认答案本来就是「不执行（保持现状）」，方向安全；
+  `askAutoContinue=false` 时不收尾（人明确要求不要替他答）。此前这类条目永远挂在待答集合里——
+  会话结束后没有任何东西会推进它。
+- **账本脱敏（2026-11-12 修）**：`cards/redact.ts` 在**落盘前**处理卡片标题、详情与逐题问题的题目/选项：
+  连接串只打码口令（`postgresql://user:***@host`）、`KEY=VALUE` 形式的凭据、散文里的「密码/口令/password
+  + 8 位以上串」、`sk-`/`ghp_`/`AKIA`/`xox` 前缀与私钥块；`CHANGE_ME`/`change-me` 这类占位符不动，
+  重复调用结果不变。真实事故 c-mwbvil7x 把生产库口令原样写进了 `cards.json`。
+- **ask 去重（2026-11-12 修）**：宿主对同一次工具调用会走两条回调（`guard` 与 `pre-execute`），判定各跑一次。`Ask.key`（`<sessionId>:<permitKey>`）是同一次判定的身份：同会话、同 key、还没作答时不再新增条目，第二次判定只写一行日志。修复前 `asks.json` 里出现成对副本（间隔 10–46 ms，3 个问题 6 条），人会被告知两遍、两条各自等超时。没有 `key` 的历史条目照旧每条都建（不可回溯去重）；
+- **与 task-10 打通**：自动继续后阻塞扫描写 `ask:unblocked`，meta 带 `auto:true`；
+- 面板：待答卡显示「默认：X（超时无回复会按此继续，可随时改）」；`blocking:true` 不显示自动继续提示。
+
+## 零静默账本（/stats.silence，2026-11-12）
+
+拒绝本身就是一个副作用：动作没发生。如果对应的 ask 没落地（写盘失败、依赖没接、被吞），
+执行方以为「已经登记给人了」，人却永远看不到——这类静默在日志里只有一行 warn。
+
+`src/host/gate/gate-stats.ts` 把「拒绝次数」与「ask 的三种去向」分别计数：
+
+- `denied`：auto 模式下判定为要拦的次数（supervised 走建卡，不算这本账）；
+- `askCreated` / `askDeduped` / `askFailed`：ask 的三种落点；
+- `unaccounted = max(0, denied - (created + deduped + failed))`：**没有去向的拒绝**，正常应为 0。
+
+计数是度量不是业务状态，写失败只丢计数、不影响拦截；落盘 `$DSH_HOME/dsh-task-cards/gate-stats.json`。
+`/stats.silence` 暴露这些数；`GateStatsStore` 可注入（`GateWireDeps.stats`），测试用临时文件。
+
+## 自噪声度量（/stats.noise，2026-11-12）
+
+「省不省力」只看一个东西：**工具问的事，人真的需要看吗。** `/stats` 增加 `noise` 块，口径：
+
+- `asks.total / human / auto / open`：ask 通道总条数、人真答过的、由默认答案收尾的（超时或过期）、还开着的；
+  `autoRate = auto / total`——**越高说明这些提问越没必要**。基线（2026-11-12）：6 条全 auto，`autoRate=1.0`。
+- `cards.total / zeroAction / zeroActionRate`：已收尾且没有任何人工动作（answered/approved/denied/dismissed）的卡；
+  `blocking`：`interaction=question` 的卡，即真正把会话卡住的提问。基线：86 张卡、60 张 zeroAction（0.698）、
+  其中 question 只有 3 张。
+- 实现：`src/host/stats/noise.ts::noiseOf`（纯函数，先测再有）；路由在 `routes/stats.ts` 里挂 `noise`。
+
+## 阻塞提醒（阶段 F，task-10）
+
+- **判定**：`shared/state.ts::isAskPending / askWaitMs / isBlockedAsk`——decision 卡、status=open、无 answer、非 notice/closed；超过 `ASK_BLOCK_THRESHOLD_MS=10min` 即阻塞；
+- **事件**：30s 扫描（`kernel/blocked-asks.ts::sweepBlockedAsks`）写 `ask:blocked`（meta: durationMs/minutes/sessionId/action）并把 severity 抬到 high；答完/关闭写 `ask:unblocked`（带 durationMs）；幂等不重复；
+- **面板**：卡片行显示「阻塞 Xm」；排序时阻塞待答卡在同车道置顶；`/stats` 的 groups 增加 `blockedAsks`（被阻塞会话数）与 `maxBlockedMs`，KPI 文本行显示「阻塞会话 N（最长 Xm）」；
+- **兜底 `Settings.askTimeoutAction`**（默认 `off`）：`notify` 只写提醒日志；`suggest` 在超 30 分钟（`ASK_SUGGEST_THRESHOLD_MS`）时把票拟建议作为「默认建议」显示在详情，**绝不自动答**；
+- 关闭（off）时仍记录事件/KPI（检测不失效），只是不提醒。
+
 ## acceptance 生产者（阶段 E/G1）
 
 - **观察者**：提示词要求 write-code / 部署类任务必须给 1–3 条 acceptance（file 优先、测试用 exit `pnpm test`；给不出留空），草稿经 `sanitizeAll` 白名单后落卡；

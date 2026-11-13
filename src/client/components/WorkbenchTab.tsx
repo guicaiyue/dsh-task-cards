@@ -28,6 +28,18 @@ export function groupBySession(cards: Card[]): SessionGroup[] {
   return [...groups.entries()].map(([sessionId, list]) => ({ sessionId, cards: list }))
 }
 
+/** P3：结果车道按目标（goalId）分组；没有 goalId 的退回会话 id。 */
+export function groupByGoal(cards: Card[]): SessionGroup[] {
+  const groups = new Map<string, Card[]>()
+  for (const card of cards) {
+    const id = card.goalId || card.origin?.sessionId || ''
+    const list = groups.get(id)
+    if (list) list.push(card)
+    else groups.set(id, [card])
+  }
+  return [...groups.entries()].map(([sessionId, list]) => ({ sessionId, cards: list }))
+}
+
 export interface WorkbenchProps {
   t: Translate
   cards: Card[]
@@ -94,7 +106,7 @@ export function WorkbenchTab(props: WorkbenchProps) {
         </div>
       ) : (
         <div className="dtc-groups">
-          {groupBySession(visible).map((group) => (
+          {(filter === 'results' ? groupByGoal(visible) : groupBySession(visible)).map((group) => (
             <Group
               key={group.sessionId || 'manual'}
               {...props}

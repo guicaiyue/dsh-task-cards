@@ -1,0 +1,35 @@
+{
+  "at": "2026-11-12T14:50:01.944Z",
+  "dataDir": "/data/dsh/dsh-task-cards",
+  "cards": {
+    "total": 86,
+    "open": 0,
+    "byKind": {
+      "decision": 37,
+      "info": 48,
+      "auto": 1
+    },
+    "humanActions": 24,
+    "zeroAction": 62,
+    "zeroActionRate": 0.721,
+    "blockingQuestions": 3
+  },
+  "asks": {
+    "total": 6,
+    "human": 0,
+    "auto": 6,
+    "open": 0,
+    "autoRate": 1
+  },
+  "silence": {
+    "denied": 0,
+    "askCreated": 0,
+    "askDeduped": 0,
+    "askFailed": 0,
+    "unaccounted": 0
+  },
+  "plans": {
+    "total": 11,
+    "open": 10
+  }
+}

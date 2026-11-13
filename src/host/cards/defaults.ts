@@ -38,6 +38,7 @@ action.delayMs 是毫秒：立即用 0，10 分钟用 600000。action.input 是�
 - 如果这轮是系统代发、且模型只是报告执行不了，不要建新的决策卡；最多建一张 info 记录失败。
 - 报「失败 / 没做完 / 还缺 X」时必须给 artifacts（可核验的产物路径，如 ["src/foo.ts"]）；给不出就降成 info 且 severity=low——没有产物的失败结论，之后没法对账，只会变成过期噪音。
 - 如果这一步必须等某张已有卡完成，在 blockedBy 里填那张卡的 id（只限同会话；同会话无人能确认就别填）。
+- 默认只写三类卡：**例外**（会话被阻塞、缺不可推断信息）、**风险**（证书到期/生产缺表/数据丢失等，severity=high）、**结果**（目标完成时一条，result:true；正文固定四段：做了什么 3–5 条 / 产物与位置（文件/链接/sha256/截图）/ 怎么验证（命令或点哪里）/ 风险与未完成（无则写「无」））；过程进展只写时间线事件，不要建卡。
 - **write-code / 部署类任务必须给 1–3 条 acceptance**（file 优先：路径必须在工作区内；测试用 exit pnpm test；http 只公网 https）。给不出可核验的检查就留空，面板会标「无验收方式，需人工补充」并给一键补。`
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -65,6 +66,11 @@ export const DEFAULT_SETTINGS: Settings = {
   decisionAutoApply: true,
   autoApproveDiagnostics: false,
   // 观察者兜底：漏掉的回合由定时扫描 + 会话日志重建补上。
+  askTimeoutAction: 'off',
+  askAutoContinue: true,
+  askTimeoutMinutes: 10,
+  autonomyMode: 'auto',
+  observerMode: 'exception-only',
   autoDecide: true,
   fallbackObserve: true,
   // 回执超时：派发后这么久还没等到 origin 会话回合一结束，就判 no-receipt。

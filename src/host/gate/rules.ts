@@ -2,8 +2,6 @@
 
 import type { Effect } from '../../shared/contract'
 
-const DESTRUCTIVE_SQL = /\b(drop\s+(table|database|schema)|truncate\s+table)\b/i
-
 export const RULES: Array<{ name: string; effect: Effect; pattern: RegExp }> = [
   { name: 'mkfs', effect: 'destructive', pattern: /\bmkfs(\.\w+)?\b/ },
   { name: 'dd-device', effect: 'destructive', pattern: /\bdd\s+if=\/dev\// },
@@ -24,7 +22,6 @@ export const RULES: Array<{ name: string; effect: Effect; pattern: RegExp }> = [
     effect: 'destructive',
     pattern: /\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba)?sh\b/,
   },
-  { name: 'destructive-sql', effect: 'destructive', pattern: DESTRUCTIVE_SQL },
   {
     name: 'publish',
     effect: 'write-code',

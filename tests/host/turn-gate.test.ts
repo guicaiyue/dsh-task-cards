@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_SETTINGS } from '../../src/host/cards/defaults'
 import { Store } from '../../src/host/cards/store'
@@ -24,13 +24,23 @@ function uniqueSession(prefix = 's'): string {
   return `${prefix}-${Date.now().toString(36)}-${uniq}-${Math.random().toString(36).slice(2, 6)}`
 }
 
+beforeEach(() => {
+  // 券/卡登记都挂在 globalThis，同 worker 的其它测试文件也会留下痕迹：
+  // 只在 afterEach 清会让「本文件第一个用例」继承别人的 usedAt，宽限期判定随之漂移（实测约 1/6 偶发）。
+  clearAllows()
+})
+
 afterEach(() => {
-  // 券存在 globalThis：同 worker 的多个测试文件共享，必须每个用例后清空。
   clearAllows()
 })
 
 function setup(
-  over: { turnGate?: Settings['turnGate']; withGuard?: boolean; graceMs?: number } = {},
+  over: {
+    turnGate?: Settings['turnGate']
+    withGuard?: boolean
+    graceMs?: number
+    autonomyMode?: Settings['autonomyMode']
+  } = {},
 ) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dtc-gate-'))
   const cards = new Store(path.join(dir, 'cards.json'))
@@ -38,13 +48,19 @@ function setup(
   const settings: Settings = {
     ...DEFAULT_SETTINGS,
     turnGate: over.turnGate ?? 'high-risk',
+    // 旧闸门用例按 supervised 跑；授权反转的 auto 行为单独测。
+    autonomyMode: over.autonomyMode ?? 'supervised',
   }
+  const asks: Array<Record<string, unknown>> = []
+  const autonomy: Array<Record<string, unknown>> = []
   const gate = new TurnGate({
     cards,
     settings: () => settings,
     log: (line: string) => logs.push(line),
     // 默认 0：严格一次性，方便测「第三次再拦」；宽限行为单独用 5000 测。
     graceMs: over.graceMs ?? 0,
+    recordAutonomy: (entry) => autonomy.push(entry as never),
+    createAsk: (entry) => asks.push(entry as never),
   })
   gate.reset()
   let guardFn: ((exec: unknown) => string | undefined) | null = null
@@ -76,6 +92,8 @@ function setup(
   const sessionId = uniqueSession('gate')
   return {
     sessionId,
+    asks,
+    autonomy,
     cards,
     gate,
     settings,
@@ -92,7 +110,9 @@ function setup(
 }
 
 async function until(check: () => boolean, label: string): Promise<void> {
-  for (let i = 0; i < 100; i += 1) {
+  // 全量并行时 CPU 紧张，给异步建卡 8s 窗口（判定逻辑本身不变）。
+  // 实测：2s 窗口在 pnpm verify 并行跑 500 个用例时会偶发超时，单跑必过。
+  for (let i = 0; i < 4000; i += 1) {
     if (check()) return
     await new Promise((resolve) => setTimeout(resolve, 2))
   }
@@ -182,7 +202,10 @@ describe('tools.guard 路径', () => {
 })
 
 describe('券的宽限期（同一次调用被判两遍也不误拦）', () => {
-  it('核销后宽限期内重复判定仍放行、不建卡；宽限过期后重新拦并建第 2 张', async () => {
+  // 这条用例要等异步建卡，vitest 默认 5s 会在慢机上先超时（表现为偶发失败）；显式给 20s。
+  it('核销后宽限期内重复判定仍放行、不建卡；宽限过期后重新拦并建第 2 张', {
+    timeout: 20_000,
+  }, async () => {
     const env = setup({ graceMs: 5_000 })
     env.gate.attach(env.gateRoot)
     const guard = env.guard()
@@ -465,5 +488,44 @@ describe('tools/pre-execute 路径（没有 guard）', () => {
     expect(card.source).toBe('agent')
     expect(card.detail).toContain('不在「回合内闸门」覆盖范围内')
     expect(env.logs.join('\n')).toContain('闸门降级')
+  })
+})
+
+describe('授权反转（P1，autonomyMode=auto）', () => {
+  it('可逆仓内写操作：不建卡、只写 autonomy:auto 审计', async () => {
+    const env = setup({ autonomyMode: 'auto' })
+    env.gate.attach(env.gateRoot)
+    const guard = env.guard()
+    const command = 'echo hi > src/note.txt'
+    expect(guard?.(env.exec(command))).toBeUndefined()
+    expect(env.cards.list()).toHaveLength(0)
+    expect(env.autonomy).toHaveLength(1)
+    expect(env.autonomy[0]?.effect).toBe('write-code')
+  })
+
+  it('不可逆动作（生产库）：不建卡、进 ask 通道且带默认答案/blocking', async () => {
+    const env = setup({ autonomyMode: 'auto' })
+    env.gate.attach(env.gateRoot)
+    const guard = env.guard()
+    const deny = guard?.(env.exec(PROD_ALTER))
+    expect(String(deny)).toContain('ask 通道')
+    expect(env.cards.list()).toHaveLength(0)
+    expect(env.asks).toHaveLength(1)
+    expect(env.asks[0]?.defaultAnswer).toBeTruthy()
+    expect(env.asks[0]?.blocking).toBe(true)
+    expect(env.asks[0]?.effect).toBe('destructive')
+    expect(String(env.asks[0]?.cwd ?? '')).toBeTruthy()
+    expect(Number(env.asks[0]?.policyVersion ?? 0)).toBeGreaterThan(0)
+  })
+
+  it('auto 模式任何路径都不建卡（guard + pre-execute + observeCall）', async () => {
+    const env = setup({ autonomyMode: 'auto' })
+    env.gate.attach(env.gateRoot)
+    const created = vi.spyOn(env.cards, 'create')
+    env.guard()?.(env.exec(PROD_ALTER))
+    await env.gate.preExecuteCall(env.exec(PROD_ALTER))
+    await env.gate.observeCall(env.sessionId, { name: 'bash', arguments: { command: PROD_ALTER } })
+    expect(created).not.toHaveBeenCalled()
+    expect(env.cards.list()).toHaveLength(0)
   })
 })

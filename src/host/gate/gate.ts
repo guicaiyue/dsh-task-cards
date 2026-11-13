@@ -9,18 +9,20 @@ import type { Store } from '../cards/store'
 import type { Log, ToolExecutionLike } from '../host-api'
 import { asRecord, asString } from '../host-api'
 import { clearAllows } from './allow'
+import { type AllowActionDeps, allowOnceFor, clearAllowFor } from './allow-actions'
+import { askDenyText, settleAutomatically } from './autonomy-hooks'
 import { createGateCard, degradeObserve, denyText, logSelfTest } from './card'
+import { createCardOnce, inspectFor, observeCallOnce } from './card-once'
+import type { GateDecision } from './classify'
+import { type GateStatsStore, gateStats } from './gate-stats'
 import {
   type AgentScopeCtx,
   attachAgentScope,
   type GateRootLike,
-  grantAllow,
   type Inspection,
   inspectCall,
   installHooks,
-  keyOfCard,
   pruneCards,
-  revokeFor,
 } from './hooks'
 import { readJudged, writeJudged } from './judged'
 
@@ -42,6 +44,32 @@ export interface TurnGateDeps {
   now?: () => number
   /** 券核销后的宽限期（默认 5s；测试可设 0 还原严格一次性）。 */
   graceMs?: number
+  /** 策略版本（审计载荷要写实际 approval-policy version）。 */
+  policyVersion?: () => number
+  /** 授权反转（P1）：可逆仓内操作自批放行时写审计事件。 */
+  recordAutonomy?: (entry: {
+    sessionId: string
+    tool: string
+    effect: string
+    target: string
+    reasons: string[]
+  }) => void
+  /** 零静默账本：拒绝次数与 ask 去向分别计数（可注入，便于测试与多实例隔离）。 */
+  stats?: GateStatsStore
+  /** ask 通道（不落 cards.json）：不可逆动作走这里。 */
+  createAsk?: (entry: {
+    goalId: string
+    sessionId: string
+    /** 去重键：guard 与 pre-execute 会各判一次同一次调用，靠它只留一条 ask。 */
+    key: string
+    question: string
+    defaultAnswer: string
+    blocking: boolean
+    reason: string
+    effect: 'read' | 'write-code' | 'external' | 'spend' | 'destructive'
+    policyVersion: number
+    cwd: string
+  }) => void
 }
 
 function sharedMap<V>(key: symbol): Map<string, V> {
@@ -77,7 +105,7 @@ export class TurnGate {
     return { guard: this.#guardCalls, preExecute: this.#calls }
   }
 
-  /** 测试/重置用：清掉跨实例共享的券与去重登记（生产热重载语义保留）。 */
+  /** 测试/重置用：清掉跨实例共享的券与去重登记。 */
   reset(): void {
     clearAllows()
     this.#cardsByKey.clear()
@@ -160,7 +188,6 @@ export class TurnGate {
     return deny ? { kind: 'deny', reason: deny } : allowed
   }
 
-  /** tools.guard 路径：同步判定（必须同步返回 deny），建卡走异步补。 */
   guardCall(exec: unknown): string | undefined {
     const value = asRecord(exec) as unknown as ToolExecutionLike
     this.#guardCalls += 1
@@ -177,7 +204,10 @@ export class TurnGate {
       return judged.deny
     }
     const inspection = this.#inspect(value)
+    this.#autonomy(value, inspection)
     if (!inspection) return undefined
+    if ((this.#deps.settings().autonomyMode ?? 'auto') === 'auto')
+      return askDenyText(inspection.decision)
     // #createCard 内部会在第一个 await 之前同步占位，并发/重试同 key 不会各建一张。
     if (!this.#cardsByKey.has(inspection.key))
       void this.#createCard(inspection).catch((err: unknown) =>
@@ -188,10 +218,13 @@ export class TurnGate {
     return deny
   }
 
-  /** tools/pre-execute 路径：可以等建卡完再 deny（reason 里带卡 id）。 */
   async preExecuteCall(exec: ToolExecutionLike): Promise<string | null> {
     const inspection = this.#inspect(exec)
+    this.#autonomy(exec, inspection)
     if (!inspection) return null
+    // 判定完成后不再重复走 #autonomy：一次调用只产生一条 ask（重复问人已发生过）。
+    if ((this.#deps.settings().autonomyMode ?? 'auto') === 'auto')
+      return askDenyText(inspection.decision)
     const cardId = await this.#createCard(inspection).catch((err: unknown) => {
       this.#deps.log(`闸门建卡失败：${messageOf(err)}`)
       return null
@@ -199,69 +232,55 @@ export class TurnGate {
     return denyText(inspection.decision, cardId)
   }
 
+  #autonomy(exec: ToolExecutionLike, inspection: Inspection | null): void {
+    settleAutomatically(this.#deps, exec, inspection, this.#deps.stats ?? gateStats())
+  }
   #inspect(exec: ToolExecutionLike): Inspection | null {
-    return inspectCall({
-      exec,
-      settings: this.#deps.settings,
-      now: this.#now(),
-      cardsByKey: this.#cardsByKey,
-      log: this.#deps.log,
-      ...(this.#deps.graceMs !== undefined ? { graceMs: this.#deps.graceMs } : {}),
-    })
+    return inspectFor(this.#deps, exec, this.#now(), this.#cardsByKey)
   }
 
   async #createCard(inspection: Inspection): Promise<string | null> {
-    const registered = this.#cardsByKey.get(inspection.key)
-    if (registered) return registered.cardId || null
-    const at = this.#now()
-    this.#cardsByKey.set(inspection.key, { cardId: '', at }) // 先占位：并发命中不双建
-    const card = await createGateCard(
-      { cards: this.#deps.cards, log: this.#deps.log },
+    if ((this.#deps.settings().autonomyMode ?? 'auto') === 'auto') {
+      this.#deps.log(
+        `闸门口径保护：auto 模式不允许建卡（${inspection.decision.reasons.join(',')}）`,
+      )
+      return null
+    }
+    const cardId = await createCardOnce(
       {
-        decision: inspection.decision,
-        toolName: inspection.toolName,
-        sessionId: inspection.sessionId,
-        permitKey: inspection.key,
-        at,
+        cards: this.#deps.cards,
+        log: this.#deps.log,
+        now: () => this.#now(),
+        cardsByKey: this.#cardsByKey,
       },
+      inspection,
     )
-    this.#cardsByKey.set(inspection.key, { cardId: card.id, at })
     this.#prune()
-    this.#deps.log(`闸门建卡：${card.id}（${inspection.decision.effect}）`)
-    return card.id
+    return cardId
   }
 
-  /** 宿主没有前置钩子：只建卡 + 标注「不支持前置拦截」，绝不假装拦住。 */
+  allowOnce(card: Card): void {
+    allowOnceFor(this.#allowDeps(), card)
+  }
+
+  clearAllow(card: Card): void {
+    clearAllowFor(this.#allowDeps(), card)
+  }
+
+  #allowDeps(): AllowActionDeps {
+    return { cardsByKey: this.#cardsByKey, now: () => this.#now(), log: this.#deps.log }
+  }
+
   async observeCall(sessionId: string, data: Record<string, unknown>): Promise<void> {
-    if (this.#mode !== 'observe-only') return
-    const mode = this.#deps.settings().turnGate ?? 'high-risk'
-    await degradeObserve(
-      { cards: this.#deps.cards, log: this.#deps.log },
-      {
-        sessionId,
-        tool: asString(data.name),
-        args: asRecord(data.arguments ?? data.args),
-        mode,
-      },
+    await observeCallOnce(
+      this.#deps.cards,
+      this.#deps.settings,
+      this.#deps.log,
+      this.#mode,
+      sessionId,
+      data,
     )
   }
-
-  /** 面板批准：发一张一次性放行券（同语义身份下一次调用通过）。 */
-  allowOnce(card: Card): void {
-    const key = keyOfCard(card)
-    if (!key) return
-    const note = grantAllow({ card, cardsByKey: this.#cardsByKey, key, now: this.#now() })
-    if (note) this.#deps.log(`闸门发券：${note}（10 分钟内一次）key=${key}`)
-  }
-
-  /** 面板拒绝：清掉可能的券与去重登记。 */
-  clearAllow(card: Card): void {
-    const key = keyOfCard(card)
-    if (!key) return
-    revokeFor(card, this.#cardsByKey, key)
-  }
-
-  /** 一次工具调用的观察入口（session/event 的 tool/call）：能力边界判定 + 降级建卡。 */
   onToolCallObserved(sessionId: string, data: Record<string, unknown>): void {
     const calls = this.calls
     if (this.#mode !== 'observe-only' && calls.guard + calls.preExecute === 0)

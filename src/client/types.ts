@@ -98,6 +98,8 @@ export interface StatsGroup {
   unknownToHumanRate: number | null
   acceptanceCards: number
   acceptanceCoverage: number | null
+  blockedAsks: number
+  maxBlockedMs: number
 }
 
 export interface StatsView {
